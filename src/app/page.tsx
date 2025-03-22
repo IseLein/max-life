@@ -82,16 +82,6 @@ export default async function Home() {
               </p>
             </div>
           </div>
-
-          {session?.user && (
-            <div className="flex w-full max-w-4xl flex-col gap-8">
-              <LatestPost />
-
-              <div className="mt-8">
-                <WeeklyCalendar />
-              </div>
-            </div>
-          )}
         </section>
       </main>
       <footer className="border-t py-6 md:py-8">

@@ -1,10 +1,8 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useRef, useEffect } from "react"
 import { Button } from "~/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "~/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
 import { ScrollArea } from "~/components/ui/scroll-area"
 import { Send } from "lucide-react"
@@ -215,19 +213,17 @@ export function CalendarChat() {
           </div>
         </ScrollArea>
       </CardContent>
-      <CardFooter className="pt-0">
-        <div className="flex w-full items-center space-x-2">
-          <Input
-            placeholder="Type your message..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <Button size="icon" onClick={handleSendMessage} disabled={isLoading}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardFooter>
+      <div className="flex w-full justify-between space-x-2">
+        <Input
+          placeholder="Type your message..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+        <Button size="icon" onClick={handleSendMessage} disabled={isLoading}>
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
     </Card>
   )
 }
