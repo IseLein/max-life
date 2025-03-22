@@ -1,272 +1,473 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, isSameDay, parseISO } from "date-fns"
-import { Button } from "~/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card"
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
-import { api } from "~/trpc/react"
-import { EventModal, CalendarEvent } from "~/components/event-modal"
-import { useToast } from "~/components/ui/use-toast"
+import { useEffect, useState, useRef } from "react";
+import {
+  format,
+  startOfWeek,
+  endOfWeek,
+  addDays,
+  addWeeks,
+  subWeeks,
+  isSameDay,
+  parseISO,
+  getHours,
+  getMinutes,
+} from "date-fns";
+import { Button } from "~/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "~/components/ui/card";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { api } from "~/trpc/react";
+import { EventModal, CalendarEvent } from "~/components/event-modal";
+import { useToast } from "~/components/ui/use-toast";
 
 // Helper functions for calendar operations
 const getDaysOfWeek = (date: Date) => {
-  const start = startOfWeek(date, { weekStartsOn: 0 })
-  return Array.from({ length: 7 }, (_, i) => addDays(start, i))
-}
+  const start = startOfWeek(date, { weekStartsOn: 0 });
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+};
+
+// Generate time slots for a full 24-hour day (midnight to midnight)
+const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => i);
 
 interface CalendarViewProps {
-  className?: string
+  className?: string;
 }
 
 export function CalendarView({ className }: CalendarViewProps) {
   // State for managing the calendar
-  const [currentDate, setCurrentDate] = useState(new Date())
-  const [selectedDate, setSelectedDate] = useState(new Date())
-  const [daysOfWeek, setDaysOfWeek] = useState<Date[]>(getDaysOfWeek(currentDate))
-  
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [daysOfWeek, setDaysOfWeek] = useState<Date[]>(
+    getDaysOfWeek(currentDate),
+  );
+
   // State for managing the event modal
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
-  const [modalMode, setModalMode] = useState<"view" | "edit" | "create">("view")
-  
-  const { toast } = useToast()
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
+    null,
+  );
+  const [modalMode, setModalMode] = useState<"view" | "edit" | "create">(
+    "view",
+  );
+
+  // Ref for scrolling to current time
+  const timeGridRef = useRef<HTMLDivElement>(null);
+
+  const { toast } = useToast();
 
   // Calculate start and end dates for the current week view
-  const startDate = startOfWeek(currentDate, { weekStartsOn: 0 })
-  const endDate = endOfWeek(currentDate, { weekStartsOn: 0 })
+  const startDate = startOfWeek(currentDate, { weekStartsOn: 0 });
+  const endDate = endOfWeek(currentDate, { weekStartsOn: 0 });
 
   // Fetch calendar events for the current week
-  const { 
-    data: events = [], 
+  const {
+    data: events = [],
     isLoading,
-    refetch
+    refetch,
   } = api.calendar.getEventsForDateRange.useQuery(
     { startDate, endDate },
-    { 
+    {
       keepPreviousData: true,
-      refetchOnWindowFocus: false
-    }
-  )
+      refetchOnWindowFocus: false,
+    },
+  );
 
-  // Mutations for event management
+  // TRPC mutations for event management
   const createEventMutation = api.calendar.createEvent.useMutation({
     onSuccess: () => {
+      refetch();
       toast({
         title: "Event created",
         description: "Your event has been created successfully.",
-      })
-      void refetch()
+      });
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: `Failed to create event: ${error.message}`,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const updateEventMutation = api.calendar.updateEvent.useMutation({
     onSuccess: () => {
+      refetch();
       toast({
         title: "Event updated",
         description: "Your event has been updated successfully.",
-      })
-      void refetch()
+      });
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: `Failed to update event: ${error.message}`,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const deleteEventMutation = api.calendar.deleteEvent.useMutation({
     onSuccess: () => {
+      refetch();
       toast({
         title: "Event deleted",
         description: "Your event has been deleted successfully.",
-      })
-      void refetch()
+      });
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: `Failed to delete event: ${error.message}`,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   // Update days of week when current date changes
   useEffect(() => {
-    setDaysOfWeek(getDaysOfWeek(currentDate))
-  }, [currentDate])
+    setDaysOfWeek(getDaysOfWeek(currentDate));
+  }, [currentDate]);
+
+  // Scroll to current time when component loads
+  useEffect(() => {
+    if (timeGridRef.current) {
+      const now = new Date();
+      const currentHour = getHours(now);
+
+      // Only scroll if current time is within our display range
+      if (currentHour >= 0 && currentHour <= 23) {
+        const hourIndex = currentHour; // Adjust for our 0-hour start
+        const scrollPosition = hourIndex * 40; // Each hour slot is 40px high
+
+        // Add a small offset to show a bit of context above current time
+        const scrollOffset = Math.max(0, scrollPosition - 80);
+        timeGridRef.current.scrollTop = scrollOffset;
+      }
+    }
+  }, []);
 
   // Navigation functions
   const goToPreviousWeek = () => {
-    setCurrentDate(subWeeks(currentDate, 1))
-  }
+    setCurrentDate(subWeeks(currentDate, 1));
+  };
 
   const goToNextWeek = () => {
-    setCurrentDate(addWeeks(currentDate, 1))
-  }
+    setCurrentDate(addWeeks(currentDate, 1));
+  };
 
   const goToToday = () => {
-    setCurrentDate(new Date())
-  }
+    setCurrentDate(new Date());
+
+    // Scroll to current time when clicking Today
+    if (timeGridRef.current) {
+      const now = new Date();
+      const currentHour = getHours(now);
+
+      if (currentHour >= 0 && currentHour <= 23) {
+        const hourIndex = currentHour; // Adjust for our 0-hour start
+        const scrollPosition = hourIndex * 40; // Each hour slot is 40px high
+
+        // Add a small offset to show a bit of context above current time
+        const scrollOffset = Math.max(0, scrollPosition - 80);
+        timeGridRef.current.scrollTop = scrollOffset;
+      }
+    }
+  };
 
   // Event handling functions
-  const handleDateClick = (date: Date) => {
-    setSelectedDate(date)
-    setSelectedEvent(null)
-    setModalMode("create")
-    setIsModalOpen(true)
-  }
+  const handleDayClick = (date: Date) => {
+    setSelectedDate(date);
+    setModalMode("create");
+    setSelectedEvent(null);
+    setIsModalOpen(true);
+  };
 
   const handleEventClick = (event: CalendarEvent) => {
-    setSelectedEvent(event)
-    setModalMode("view")
-    setIsModalOpen(true)
-  }
+    setSelectedEvent(event);
+    setModalMode("view");
+    setIsModalOpen(true);
+  };
 
-  const handleCreateNewEvent = () => {
-    setSelectedEvent(null)
-    setModalMode("create")
-    setIsModalOpen(true)
-  }
-
-  const handleSaveEvent = async (eventData: CalendarEvent) => {
-    if (modalMode === "create") {
-      await createEventMutation.mutateAsync(eventData)
-    } else if (modalMode === "edit" && selectedEvent?.id) {
-      await updateEventMutation.mutateAsync({
-        id: selectedEvent.id,
-        ...eventData,
-      })
+  const handleSaveEvent = async (event: CalendarEvent) => {
+    try {
+      if (modalMode === "create") {
+        await createEventMutation.mutateAsync(event);
+      } else if (modalMode === "edit") {
+        await updateEventMutation.mutateAsync(event);
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Error saving event:", error);
     }
-  }
+  };
 
   const handleDeleteEvent = async (eventId: string) => {
-    await deleteEventMutation.mutateAsync({ id: eventId })
-  }
+    try {
+      await deleteEventMutation.mutateAsync({ eventId });
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Error deleting event:", error);
+    }
+  };
 
   // Helper function to get events for a specific day
-  const getEventsForDay = (day: Date) => {
+  const getEventsForDay = (date: Date) => {
     return events.filter((event) => {
       // Handle all-day events
       if (event.start.date) {
-        const eventDate = parseISO(event.start.date)
-        return isSameDay(day, eventDate)
+        const eventDate = parseISO(event.start.date);
+        return isSameDay(eventDate, date);
       }
-      
+
       // Handle time-based events
       if (event.start.dateTime) {
-        const eventDate = parseISO(event.start.dateTime)
-        return isSameDay(day, eventDate)
+        const eventDate = parseISO(event.start.dateTime);
+        return isSameDay(eventDate, date);
       }
-      
-      return false
-    })
-  }
 
-  // Render time slots for a day
-  const renderTimeSlots = (day: Date) => {
-    const dayEvents = getEventsForDay(day)
-    
-    if (dayEvents.length === 0) {
-      return (
-        <div 
-          className="h-full min-h-[100px] cursor-pointer border-t border-gray-200 p-1"
-          onClick={() => handleDateClick(day)}
-        />
-      )
-    }
+      return false;
+    });
+  };
 
-    return (
-      <div className="h-full min-h-[100px] border-t border-gray-200 p-1">
-        {dayEvents.map((event) => (
-          <div
-            key={event.id}
-            onClick={() => handleEventClick(event)}
-            className="mb-1 cursor-pointer rounded bg-blue-100 p-1 text-xs hover:bg-blue-200"
-          >
-            <div className="font-medium">{event.summary}</div>
-            {event.start.dateTime && (
-              <div className="text-gray-600">
-                {format(parseISO(event.start.dateTime), "h:mm a")}
-              </div>
-            )}
-          </div>
-        ))}
-        <div 
-          className="mt-1 h-4 w-full cursor-pointer"
-          onClick={() => handleDateClick(day)}
-        />
-      </div>
-    )
-  }
+  // Helper function to position an event in the time grid
+  const getEventPosition = (event: CalendarEvent) => {
+    if (event.isAllDay || event.start.date) return null; // All-day events are handled separately
+
+    if (!event.start.dateTime || !event.end.dateTime) return null;
+
+    const eventStart = parseISO(event.start.dateTime);
+    const hours = getHours(eventStart);
+    const minutes = getMinutes(eventStart);
+
+    // Calculate position from top (in percentage)
+    const startHour = hours; // Offset from our 0-hour start
+    if (startHour < 0) return null; // Event starts before our display time
+
+    const minutePercentage = minutes / 60;
+    const topPosition = (startHour + minutePercentage) * (100 / 24); // 24 hours in our display (0-23)
+
+    // Calculate height based on duration
+    const eventEnd = parseISO(event.end.dateTime);
+    const durationHours =
+      (eventEnd.getTime() - eventStart.getTime()) / (1000 * 60 * 60);
+    const heightPercentage = Math.min(durationHours * (100 / 24), 100); // Cap at 100% height
+
+    return {
+      top: `${topPosition}%`,
+      height: `${heightPercentage}%`,
+    };
+  };
+
+  // Generate current time indicator position
+  const getCurrentTimePosition = () => {
+    const now = new Date();
+    const hours = getHours(now);
+    const minutes = getMinutes(now);
+
+    if (hours < 0 || hours > 23) return null;
+
+    const hourOffset = hours; // Offset from our 0-hour start
+    const minutePercentage = minutes / 60;
+    const topPosition = (hourOffset + minutePercentage) * (100 / 24); // 24 hours in our display
+
+    return {
+      top: `${topPosition}%`,
+    };
+  };
+
+  const currentTimePosition = getCurrentTimePosition();
+  const isToday = daysOfWeek.some((day) => isSameDay(day, new Date()));
 
   return (
-    <Card className={className}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+    <Card className={`w-full ${className}`}>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div>
           <CardTitle>Calendar</CardTitle>
-          <div className="flex space-x-2">
-            <Button variant="outline" size="sm" onClick={goToPreviousWeek}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={goToToday}>
-              Today
-            </Button>
-            <Button variant="outline" size="sm" onClick={goToNextWeek}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button size="sm" onClick={handleCreateNewEvent}>
-              <Plus className="mr-1 h-4 w-4" />
-              Add Event
-            </Button>
-          </div>
+          <CardDescription>
+            {format(startDate, "MMMM d, yyyy")} -{" "}
+            {format(endDate, "MMMM d, yyyy")}
+          </CardDescription>
         </div>
-        <CardDescription>
-          {format(startDate, "MMMM d, yyyy")} - {format(endDate, "MMMM d, yyyy")}
-        </CardDescription>
+        <div className="flex space-x-2">
+          <Button variant="outline" size="sm" onClick={goToPreviousWeek}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={goToToday}>
+            Today
+          </Button>
+          <Button variant="outline" size="sm" onClick={goToNextWeek}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button size="sm" onClick={() => handleDayClick(selectedDate)}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add Event
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[300px] items-center justify-center">
-            <div className="text-center">
-              <div className="mb-2 h-6 w-6 animate-spin rounded-full border-b-2 border-t-2 border-gray-900 mx-auto"></div>
-              <p className="text-sm text-gray-500">Loading calendar events...</p>
-            </div>
+          <div className="flex h-[600px] items-center justify-center">
+            <p>Loading calendar events...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-7 border border-gray-200">
-            {/* Day headers */}
-            {daysOfWeek.map((day, index) => (
-              <div
-                key={index}
-                className="border-b border-r border-gray-200 p-2 text-center"
-              >
-                <div className="text-sm font-medium">
-                  {format(day, "EEE")}
+          <div className="grid h-[600px] grid-cols-8 overflow-hidden rounded-md border">
+            {/* Day headers row */}
+            <div className="sticky top-0 z-20 col-span-8 grid grid-cols-8 border-b bg-white">
+              {/* Empty cell for time column */}
+              <div className="border-r p-2"></div>
+
+              {/* Day headers */}
+              {daysOfWeek.map((day, index) => (
+                <div
+                  key={index}
+                  className={`border-r p-2 text-center font-medium ${
+                    isSameDay(day, new Date()) ? "bg-blue-50" : ""
+                  }`}
+                >
+                  <div>{format(day, "EEE")}</div>
+                  <div
+                    className={`text-lg ${
+                      isSameDay(day, new Date())
+                        ? "font-bold text-blue-600"
+                        : ""
+                    }`}
+                  >
+                    {format(day, "d")}
+                  </div>
                 </div>
-                <div className="text-sm">{format(day, "d")}</div>
+              ))}
+            </div>
+
+            {/* Scrollable time grid */}
+            <div
+              className="col-span-8 grid h-[540px] grid-cols-8 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              ref={timeGridRef}
+            >
+              {/* Time labels column */}
+              <div className="sticky left-0 z-10 col-span-1 border-r bg-white">
+                {TIME_SLOTS.map((hour) => (
+                  <div
+                    key={hour}
+                    className="h-[40px] border-b pr-2 text-right text-sm text-gray-500"
+                  >
+                    {hour === 0
+                      ? "12AM"
+                      : hour === 12
+                        ? "12PM"
+                        : hour > 12
+                          ? `${hour - 12}PM`
+                          : `${hour}AM`}
+                  </div>
+                ))}
               </div>
-            ))}
-            
-            {/* Calendar cells */}
-            {daysOfWeek.map((day, index) => (
-              <div
-                key={`cell-${index}`}
-                className="h-[200px] border-r border-gray-200 last:border-r-0"
-              >
-                {renderTimeSlots(day)}
+
+              {/* Days columns */}
+              <div className="col-span-7 grid grid-cols-7">
+                {/* Time slots for each day */}
+                {daysOfWeek.map((day, dayIndex) => (
+                  <div key={dayIndex} className="relative border-r">
+                    {/* Time slot grid lines */}
+                    {TIME_SLOTS.map((hour) => (
+                      <div
+                        key={hour}
+                        className="h-[40px] cursor-pointer border-b hover:bg-gray-50"
+                        onClick={() => {
+                          // Create event at this specific time
+                          const newDate = new Date(day);
+                          newDate.setHours(hour, 0, 0, 0);
+                          setSelectedDate(newDate);
+                          setModalMode("create");
+                          setSelectedEvent(null);
+                          setIsModalOpen(true);
+                        }}
+                      />
+                    ))}
+
+                    {/* All-day events */}
+                    <div className="absolute top-0 right-0 left-0 px-1">
+                      {getEventsForDay(day)
+                        .filter((event) => event.isAllDay || event.start.date)
+                        .map((event, idx) => (
+                          <div
+                            key={event.id}
+                            className="mt-1 mb-1 cursor-pointer truncate rounded bg-blue-100 px-1 py-0.5 text-xs text-blue-800"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEventClick(event);
+                            }}
+                          >
+                            {event.summary}
+                          </div>
+                        ))}
+                    </div>
+
+                    {/* Time-based events */}
+                    {getEventsForDay(day)
+                      .filter(
+                        (event) =>
+                          !event.isAllDay &&
+                          !event.start.date &&
+                          event.start.dateTime,
+                      )
+                      .map((event, idx) => {
+                        const position = getEventPosition(event);
+                        if (!position) return null;
+
+                        return (
+                          <div
+                            key={event.id}
+                            className="absolute right-0 left-0 mx-1 cursor-pointer overflow-hidden rounded bg-blue-500 px-1 text-white"
+                            style={{
+                              top: position.top,
+                              height: position.height,
+                              zIndex: 10,
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEventClick(event);
+                            }}
+                          >
+                            <div className="truncate text-xs">
+                              {event.summary}
+                            </div>
+                            {parseFloat(position.height) > 5 &&
+                              event.start.dateTime && (
+                                <div className="truncate text-xs">
+                                  {format(
+                                    parseISO(event.start.dateTime),
+                                    "h:mm a",
+                                  )}
+                                </div>
+                              )}
+                          </div>
+                        );
+                      })}
+
+                    {/* Current time indicator */}
+                    {isToday &&
+                      isSameDay(day, new Date()) &&
+                      currentTimePosition && (
+                        <div
+                          className="absolute right-0 left-0 z-20"
+                          style={{ top: currentTimePosition.top }}
+                        >
+                          <div className="flex items-center">
+                            <div className="ml-1 h-2 w-2 rounded-full bg-red-500"></div>
+                            <div className="h-[1px] w-full bg-red-500"></div>
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         )}
       </CardContent>
@@ -282,5 +483,5 @@ export function CalendarView({ className }: CalendarViewProps) {
         setModalMode={setModalMode}
       />
     </Card>
-  )
+  );
 }
