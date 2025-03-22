@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { LatestPost } from "~/app/_components/post";
+import { WeeklyCalendar } from "~/app/_components/calendar";
 import { auth } from "~/server/auth";
 import { api, HydrateClient } from "~/trpc/server";
 
@@ -61,7 +62,15 @@ export default async function Home() {
             </div>
           </div>
 
-          {session?.user && <LatestPost />}
+          {session?.user && (
+            <div className="flex w-full max-w-4xl flex-col gap-8">
+              <LatestPost />
+
+              <div className="mt-8">
+                <WeeklyCalendar />
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </HydrateClient>
