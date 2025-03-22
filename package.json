@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.7.2",
+    "@google/generative-ai": "^0.24.0",
     "@libsql/client": "^0.14.0",
     "@radix-ui/react-scroll-area": "^1.2.3",
     "@radix-ui/react-slot": "^1.1.2",
