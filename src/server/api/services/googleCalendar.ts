@@ -120,6 +120,101 @@ export async function getCalendarEventsForCurrentWeek(
   }
 }
 
+export async function getCalendarEvents(
+  userId: string,
+  startDate: Date,
+  endDate: Date,
+): Promise<CalendarEvent[]> {
+  try {
+    // Get the user's Google account from the database
+    const userAccount = await db.query.accounts.findFirst({
+      where: (accounts, { eq, and }) =>
+        and(eq(accounts.userId, userId), eq(accounts.provider, "google")),
+    });
+
+    if (!userAccount || !userAccount.access_token) {
+      throw new Error("No Google account found or access token missing");
+    }
+
+    // Check if token is expired and refresh if needed
+    if (
+      userAccount.expires_at &&
+      userAccount.expires_at < Math.floor(Date.now() / 1000)
+    ) {
+      console.log("Access token expired, attempting to refresh...");
+      const refreshedToken = await refreshAccessToken(userAccount);
+      if (!refreshedToken) {
+        throw new Error("Failed to refresh expired access token");
+      }
+      // Update the access token for the current request
+      userAccount.access_token = refreshedToken;
+    }
+
+    // Calculate current week's start and end dates
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay()); // Start from Sunday
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6); // End on Saturday
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    // Format dates for Google Calendar API
+    const timeMin = startDate.toISOString();
+    const timeMax = endDate.toISOString();
+
+    console.log(`Fetching calendar events from ${timeMin} to ${timeMax}`);
+    console.log(
+      `Using access token: ${userAccount.access_token?.substring(0, 10)}...`,
+    );
+
+    // Fetch calendar events from Google Calendar API
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
+      {
+        headers: {
+          Authorization: `Bearer ${userAccount.access_token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.log("Calendar API error response:", errorData);
+
+      // Handle token expiration by trying to refresh the token
+      if (response.status === 401 && userAccount.refresh_token) {
+        console.log("Received 401, attempting to refresh token...");
+        const refreshedToken = await refreshAccessToken(userAccount);
+        if (refreshedToken) {
+          console.log("Token refreshed successfully, retrying request");
+          // Update the access token for retry
+          userAccount.access_token = refreshedToken;
+
+          // Create a new function call with the updated token
+          return getCalendarEvents(userId, startDate, endDate);
+        } else {
+          console.log("Token refresh failed");
+        }
+      }
+
+      throw new Error(
+        `Failed to fetch calendar events: ${JSON.stringify(errorData)}`,
+      );
+    }
+
+    const data = await response.json();
+    console.log(
+      `Successfully fetched ${data.items?.length || 0} calendar events`,
+    );
+    return data.items as CalendarEvent[];
+  } catch (error) {
+    console.error("Error fetching calendar events:", error);
+    throw error;
+  }
+}
+
 async function refreshAccessToken(
   account: AccountType,
 ): Promise<string | null> {
