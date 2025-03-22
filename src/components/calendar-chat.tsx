@@ -7,6 +7,7 @@ import { Input } from "~/components/ui/input"
 import { ScrollArea } from "~/components/ui/scroll-area"
 import { Send } from "lucide-react"
 import { EventSuggestion } from "~/components/event-suggestion"
+import { api } from "~/trpc/react"
 
 type Message = {
   id: string
@@ -38,6 +39,27 @@ export function CalendarChat() {
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  const utils = api.useUtils()
+  const makeGeminiRequest = api.gemini.generate.useMutation({
+    onSuccess: async (data) => {
+      await utils.invalidate()
+      console.log(data)
+      const ai_responses = data.response.candidates
+      if (!ai_responses || !ai_responses[0]) return
+      const ai_response = ai_responses[0].content?.parts?.[0]?.text || ""
+
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: ai_response,
+        sender: "ai",
+        timestamp: new Date(),
+      }
+
+      setMessages((prev) => [...prev, aiMessage])
+      setIsLoading(false)
+    },
+  })
+
   useEffect(() => {
     scrollToBottom()
   }, [messages])
@@ -56,30 +78,11 @@ export function CalendarChat() {
       sender: "user",
       timestamp: new Date(),
     }
-
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: getAIResponse(input),
-        sender: "ai",
-        timestamp: new Date(),
-      }
-
-      setMessages((prev) => [...prev, aiMessage])
-
-      // Generate event suggestions based on user input
-      if (input.toLowerCase().includes("goal") || input.toLowerCase().includes("hobby")) {
-        const newSuggestions = generateSuggestions(input)
-        setSuggestions(newSuggestions)
-      }
-
-      setIsLoading(false)
-    }, 1000)
+    makeGeminiRequest.mutate({ prompt: input })
   }
 
   const getAIResponse = (userInput: string): string => {
@@ -160,6 +163,7 @@ export function CalendarChat() {
 
     setMessages((prev) => [...prev, confirmationMessage])
   }
+
 
   return (
     <Card className="h-[calc(100vh-12rem)]">
