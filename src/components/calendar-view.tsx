@@ -1,205 +1,285 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, isSameDay, parseISO } from "date-fns"
 import { Button } from "~/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card"
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { api } from "~/trpc/react"
+import { EventModal, CalendarEvent } from "~/components/event-modal"
+import { useToast } from "~/components/ui/use-toast"
 
-// Mock calendar data
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-const HOURS = Array.from({ length: 24 }, (_, i) => i)
+// Helper functions for calendar operations
+const getDaysOfWeek = (date: Date) => {
+  const start = startOfWeek(date, { weekStartsOn: 0 })
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i))
+}
 
-// Mock events
-const EVENTS = [
-  { id: 1, title: "Team Meeting", date: new Date(2025, 2, 22, 10, 0), duration: 60 },
-  { id: 2, title: "Gym Workout", date: new Date(2025, 2, 23, 17, 0), duration: 90 },
-  { id: 3, title: "Project Planning", date: new Date(2025, 2, 24, 14, 0), duration: 120 },
-  { id: 4, title: "Reading Time", date: new Date(2025, 2, 19, 20, 0), duration: 60 },
-  { id: 5, title: "Coffee with Alex", date: new Date(2025, 2, 17, 11, 0), duration: 45 },
-  { id: 6, title: "Coding Session", date: new Date(2025, 2, 12, 13, 0), duration: 180 },
-]
+interface CalendarViewProps {
+  className?: string
+}
 
-export function CalendarView() {
-  const [currentWeek, setCurrentWeek] = useState(new Date())
+export function CalendarView({ className }: CalendarViewProps) {
+  // State for managing the calendar
+  const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(new Date())
+  const [daysOfWeek, setDaysOfWeek] = useState<Date[]>(getDaysOfWeek(currentDate))
+  
+  // State for managing the event modal
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+  const [modalMode, setModalMode] = useState<"view" | "edit" | "create">("view")
+  
+  const { toast } = useToast()
 
-  // Get the first day of the week (Sunday) for the current week
-  const getFirstDayOfWeek = (date: Date) => {
-    const d = new Date(date)
-    const day = d.getDay() // 0 for Sunday, 1 for Monday, etc.
-    d.setDate(d.getDate() - day) // Go back to the first day of the week (Sunday)
-    return d
+  // Calculate start and end dates for the current week view
+  const startDate = startOfWeek(currentDate, { weekStartsOn: 0 })
+  const endDate = endOfWeek(currentDate, { weekStartsOn: 0 })
+
+  // Fetch calendar events for the current week
+  const { 
+    data: events = [], 
+    isLoading,
+    refetch
+  } = api.calendar.getEventsForDateRange.useQuery(
+    { startDate, endDate },
+    { 
+      keepPreviousData: true,
+      refetchOnWindowFocus: false
+    }
+  )
+
+  // Mutations for event management
+  const createEventMutation = api.calendar.createEvent.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Event created",
+        description: "Your event has been created successfully.",
+      })
+      void refetch()
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: `Failed to create event: ${error.message}`,
+        variant: "destructive",
+      })
+    },
+  })
+
+  const updateEventMutation = api.calendar.updateEvent.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Event updated",
+        description: "Your event has been updated successfully.",
+      })
+      void refetch()
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: `Failed to update event: ${error.message}`,
+        variant: "destructive",
+      })
+    },
+  })
+
+  const deleteEventMutation = api.calendar.deleteEvent.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Event deleted",
+        description: "Your event has been deleted successfully.",
+      })
+      void refetch()
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: `Failed to delete event: ${error.message}`,
+        variant: "destructive",
+      })
+    },
+  })
+
+  // Update days of week when current date changes
+  useEffect(() => {
+    setDaysOfWeek(getDaysOfWeek(currentDate))
+  }, [currentDate])
+
+  // Navigation functions
+  const goToPreviousWeek = () => {
+    setCurrentDate(subWeeks(currentDate, 1))
   }
 
-  // Get array of dates for the current week
-  const getWeekDates = () => {
-    const firstDay = getFirstDayOfWeek(currentWeek)
-    return Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(firstDay)
-      date.setDate(firstDay.getDate() + i)
-      return date
-    })
+  const goToNextWeek = () => {
+    setCurrentDate(addWeeks(currentDate, 1))
   }
 
-  const weekDates = getWeekDates()
-
-  const handlePrevWeek = () => {
-    const newDate = new Date(currentWeek)
-    newDate.setDate(newDate.getDate() - 7)
-    setCurrentWeek(newDate)
+  const goToToday = () => {
+    setCurrentDate(new Date())
   }
 
-  const handleNextWeek = () => {
-    const newDate = new Date(currentWeek)
-    newDate.setDate(newDate.getDate() + 7)
-    setCurrentWeek(newDate)
-  }
-
+  // Event handling functions
   const handleDateClick = (date: Date) => {
     setSelectedDate(date)
+    setSelectedEvent(null)
+    setModalMode("create")
+    setIsModalOpen(true)
   }
 
-  // Format date as "Month Day" (e.g., "Jun 15")
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const handleEventClick = (event: CalendarEvent) => {
+    setSelectedEvent(event)
+    setModalMode("view")
+    setIsModalOpen(true)
   }
 
-  // Format time as "HH:MM AM/PM"
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const handleCreateNewEvent = () => {
+    setSelectedEvent(null)
+    setModalMode("create")
+    setIsModalOpen(true)
   }
 
-  // Check if a date is today
-  const isToday = (date: Date) => {
-    const today = new Date()
-    return (
-      date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear()
-    )
-  }
-
-  // Check if a date is the selected date
-  const isSelected = (date: Date) => {
-    return (
-      date.getDate() === selectedDate.getDate() &&
-      date.getMonth() === selectedDate.getMonth() &&
-      date.getFullYear() === selectedDate.getFullYear()
-    )
-  }
-
-  // Get events for a specific day and hour
-  const getEventsForTimeSlot = (date: Date, hour: number) => {
-    return EVENTS.filter((event) => {
-      const eventDate = event.date
-      return (
-        eventDate.getDate() === date.getDate() &&
-        eventDate.getMonth() === date.getMonth() &&
-        eventDate.getFullYear() === date.getFullYear() &&
-        eventDate.getHours() === hour
-      )
-    })
-  }
-
-  // Get all events for a specific day
-  const getDayEvents = () => {
-    return EVENTS.filter((event) => {
-      const eventDate = event.date
-      return (
-        eventDate.getDate() === selectedDate.getDate() &&
-        eventDate.getMonth() === selectedDate.getMonth() &&
-        eventDate.getFullYear() === selectedDate.getFullYear()
-      )
-    })
-  }
-
-  // Format week range for header (e.g., "June 12 - June 18, 2023")
-  const formatWeekRange = () => {
-    const firstDay = weekDates[0]
-    const lastDay = weekDates[6]
-
-    const firstMonth = firstDay?.toLocaleDateString("en-US", { month: "long" })
-    const lastMonth = lastDay?.toLocaleDateString("en-US", { month: "long" })
-
-    const firstDate = firstDay?.getDate()
-    const lastDate = lastDay?.getDate()
-
-    const year = lastDay?.getFullYear()
-
-    if (firstMonth === lastMonth) {
-      return `${firstMonth} ${firstDate} - ${lastDate}, ${year}`
-    } else {
-      return `${firstMonth} ${firstDate} - ${lastMonth} ${lastDate}, ${year}`
+  const handleSaveEvent = async (eventData: CalendarEvent) => {
+    if (modalMode === "create") {
+      await createEventMutation.mutateAsync(eventData)
+    } else if (modalMode === "edit" && selectedEvent?.id) {
+      await updateEventMutation.mutateAsync({
+        id: selectedEvent.id,
+        ...eventData,
+      })
     }
   }
 
+  const handleDeleteEvent = async (eventId: string) => {
+    await deleteEventMutation.mutateAsync({ id: eventId })
+  }
+
+  // Helper function to get events for a specific day
+  const getEventsForDay = (day: Date) => {
+    return events.filter((event) => {
+      // Handle all-day events
+      if (event.start.date) {
+        const eventDate = parseISO(event.start.date)
+        return isSameDay(day, eventDate)
+      }
+      
+      // Handle time-based events
+      if (event.start.dateTime) {
+        const eventDate = parseISO(event.start.dateTime)
+        return isSameDay(day, eventDate)
+      }
+      
+      return false
+    })
+  }
+
+  // Render time slots for a day
+  const renderTimeSlots = (day: Date) => {
+    const dayEvents = getEventsForDay(day)
+    
+    if (dayEvents.length === 0) {
+      return (
+        <div 
+          className="h-full min-h-[100px] cursor-pointer border-t border-gray-200 p-1"
+          onClick={() => handleDateClick(day)}
+        />
+      )
+    }
+
+    return (
+      <div className="h-full min-h-[100px] border-t border-gray-200 p-1">
+        {dayEvents.map((event) => (
+          <div
+            key={event.id}
+            onClick={() => handleEventClick(event)}
+            className="mb-1 cursor-pointer rounded bg-blue-100 p-1 text-xs hover:bg-blue-200"
+          >
+            <div className="font-medium">{event.summary}</div>
+            {event.start.dateTime && (
+              <div className="text-gray-600">
+                {format(parseISO(event.start.dateTime), "h:mm a")}
+              </div>
+            )}
+          </div>
+        ))}
+        <div 
+          className="mt-1 h-4 w-full cursor-pointer"
+          onClick={() => handleDateClick(day)}
+        />
+      </div>
+    )
+  }
+
   return (
-    <Card className="h-[calc(100vh-12rem)]">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Weekly Calendar</CardTitle>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" size="icon" onClick={handlePrevWeek}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm font-medium">{formatWeekRange()}</span>
-          <Button variant="outline" size="icon" onClick={handleNextWeek}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+    <Card className={className}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle>Calendar</CardTitle>
+          <div className="flex space-x-2">
+            <Button variant="outline" size="sm" onClick={goToPreviousWeek}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={goToToday}>
+              Today
+            </Button>
+            <Button variant="outline" size="sm" onClick={goToNextWeek}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button size="sm" onClick={handleCreateNewEvent}>
+              <Plus className="mr-1 h-4 w-4" />
+              Add Event
+            </Button>
+          </div>
         </div>
+        <CardDescription>
+          {format(startDate, "MMMM d, yyyy")} - {format(endDate, "MMMM d, yyyy")}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="p-0 overflow-auto">
-        <div className="min-w-[800px]">
-          {/* Day headers */}
-          <div className="grid grid-cols-8 border-b">
-            <div className="p-2 text-center text-sm font-medium text-muted-foreground border-r">Time</div>
-            {weekDates.map((date, index) => (
+      <CardContent>
+        {isLoading ? (
+          <div className="flex h-[300px] items-center justify-center">
+            <div className="text-center">
+              <div className="mb-2 h-6 w-6 animate-spin rounded-full border-b-2 border-t-2 border-gray-900 mx-auto"></div>
+              <p className="text-sm text-gray-500">Loading calendar events...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-7 border border-gray-200">
+            {/* Day headers */}
+            {daysOfWeek.map((day, index) => (
               <div
                 key={index}
-                className={`p-2 text-center cursor-pointer ${isToday(date) ? "bg-primary/10" : ""} ${isSelected(date) ? "bg-primary/20" : ""}`}
-                onClick={() => handleDateClick(date)}
+                className="border-b border-r border-gray-200 p-2 text-center"
               >
-                <div className="text-sm font-medium">{DAYS[date.getDay()]}</div>
-                <div className={`text-sm ${isToday(date) ? "font-bold" : ""}`}>{formatDate(date)}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Time slots */}
-          <div className="divide-y">
-            {HOURS.map((hour) => (
-              <div key={hour} className="grid grid-cols-8 min-h-[60px]">
-                <div className="p-2 text-center text-sm text-muted-foreground border-r">
-                  {hour % 12 === 0 ? 12 : hour % 12}
-                  {hour >= 12 ? "pm" : "am"}
+                <div className="text-sm font-medium">
+                  {format(day, "EEE")}
                 </div>
-                {weekDates.map((date, index) => {
-                  const events = getEventsForTimeSlot(date, hour)
-                  return (
-                    <div key={index} className="p-1 border-r relative">
-                      {events.map((event) => (
-                        <div
-                          key={event.id}
-                          className="bg-primary/80 text-primary-foreground rounded p-1 text-xs mb-1 cursor-pointer"
-                          style={{
-                            height: `${Math.min(event.duration / 15, 4) * 15}px`,
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div className="font-medium truncate">{event.title}</div>
-                          <div className="truncate">
-                            {formatTime(event.date)} -{" "}
-                            {formatTime(new Date(event.date.getTime() + event.duration * 60000))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })}
+                <div className="text-sm">{format(day, "d")}</div>
+              </div>
+            ))}
+            
+            {/* Calendar cells */}
+            {daysOfWeek.map((day, index) => (
+              <div
+                key={`cell-${index}`}
+                className="h-[200px] border-r border-gray-200 last:border-r-0"
+              >
+                {renderTimeSlots(day)}
               </div>
             ))}
           </div>
-        </div>
+        )}
       </CardContent>
+
+      {/* Event Modal */}
+      <EventModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        event={selectedEvent}
+        mode={modalMode}
+        onSave={handleSaveEvent}
+        onDelete={handleDeleteEvent}
+      />
     </Card>
   )
 }

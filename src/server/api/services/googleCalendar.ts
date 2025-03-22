@@ -276,12 +276,26 @@ async function refreshAccessToken(
   }
 }
 
-// Create a new calendar event
 export async function createCalendarEvent(
   userId: string,
-  eventDetails: Omit<CalendarEvent, "id">,
-): Promise<CalendarEvent> {
+  eventData: {
+    summary: string;
+    description?: string;
+    location?: string;
+    start: {
+      dateTime?: string;
+      date?: string;
+      timeZone?: string;
+    };
+    end: {
+      dateTime?: string;
+      date?: string;
+      timeZone?: string;
+    };
+  }
+): Promise<any> {
   try {
+    // Get the user's Google account from the database
     const userAccount = await db.query.accounts.findFirst({
       where: (accounts, { eq, and }) =>
         and(eq(accounts.userId, userId), eq(accounts.provider, "google")),
@@ -305,6 +319,9 @@ export async function createCalendarEvent(
       userAccount.access_token = refreshedToken;
     }
 
+    console.log("Creating calendar event:", eventData.summary);
+
+    // Create calendar event in Google Calendar API
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events`,
       {
@@ -313,37 +330,65 @@ export async function createCalendarEvent(
           Authorization: `Bearer ${userAccount.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(eventDetails),
-      },
+        body: JSON.stringify(eventData),
+      }
     );
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.log("Calendar API error response:", errorData);
+
+      // Handle token expiration by trying to refresh the token
       if (response.status === 401 && userAccount.refresh_token) {
+        console.log("Received 401, attempting to refresh token...");
         const refreshedToken = await refreshAccessToken(userAccount);
         if (refreshedToken) {
-          return createCalendarEvent(userId, eventDetails);
+          console.log("Token refreshed successfully, retrying request");
+          // Update the access token for retry
+          userAccount.access_token = refreshedToken;
+
+          // Retry the request with the new token
+          return createCalendarEvent(userId, eventData);
+        } else {
+          console.log("Token refresh failed");
         }
       }
+
       throw new Error(
-        `Failed to create calendar event: ${JSON.stringify(errorData)}`,
+        `Failed to create calendar event: ${JSON.stringify(errorData)}`
       );
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log("Successfully created calendar event:", data.id);
+    return data;
   } catch (error) {
     console.error("Error creating calendar event:", error);
     throw error;
   }
 }
 
-// Update an existing calendar event
 export async function updateCalendarEvent(
   userId: string,
   eventId: string,
-  eventDetails: Partial<Omit<CalendarEvent, "id">>,
-): Promise<CalendarEvent> {
+  eventData: {
+    summary?: string;
+    description?: string;
+    location?: string;
+    start?: {
+      dateTime?: string;
+      date?: string;
+      timeZone?: string;
+    };
+    end?: {
+      dateTime?: string;
+      date?: string;
+      timeZone?: string;
+    };
+  }
+): Promise<any> {
   try {
+    // Get the user's Google account from the database
     const userAccount = await db.query.accounts.findFirst({
       where: (accounts, { eq, and }) =>
         and(eq(accounts.userId, userId), eq(accounts.provider, "google")),
@@ -367,44 +412,86 @@ export async function updateCalendarEvent(
       userAccount.access_token = refreshedToken;
     }
 
+    console.log(`Updating calendar event ${eventId}:`, eventData.summary);
+
+    // First, get the current event to merge with updates
+    const getResponse = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${userAccount.access_token}`,
+        },
+      }
+    );
+
+    if (!getResponse.ok) {
+      const errorData = await getResponse.json();
+      throw new Error(
+        `Failed to fetch event for update: ${JSON.stringify(errorData)}`
+      );
+    }
+
+    const currentEvent = await getResponse.json();
+    
+    // Merge the current event with the updates
+    const updatedEvent = {
+      ...currentEvent,
+      ...eventData,
+    };
+
+    // Update calendar event in Google Calendar API
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
       {
-        method: "PATCH",
+        method: "PUT",
         headers: {
           Authorization: `Bearer ${userAccount.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(eventDetails),
-      },
+        body: JSON.stringify(updatedEvent),
+      }
     );
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.log("Calendar API error response:", errorData);
+
+      // Handle token expiration by trying to refresh the token
       if (response.status === 401 && userAccount.refresh_token) {
+        console.log("Received 401, attempting to refresh token...");
         const refreshedToken = await refreshAccessToken(userAccount);
         if (refreshedToken) {
-          return updateCalendarEvent(userId, eventId, eventDetails);
+          console.log("Token refreshed successfully, retrying request");
+          // Update the access token for retry
+          userAccount.access_token = refreshedToken;
+
+          // Retry the request with the new token
+          return updateCalendarEvent(userId, eventId, eventData);
+        } else {
+          console.log("Token refresh failed");
         }
       }
+
       throw new Error(
-        `Failed to update calendar event: ${JSON.stringify(errorData)}`,
+        `Failed to update calendar event: ${JSON.stringify(errorData)}`
       );
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log("Successfully updated calendar event:", data.id);
+    return data;
   } catch (error) {
     console.error("Error updating calendar event:", error);
     throw error;
   }
 }
 
-// Delete a calendar event
 export async function deleteCalendarEvent(
   userId: string,
-  eventId: string,
+  eventId: string
 ): Promise<boolean> {
   try {
+    // Get the user's Google account from the database
     const userAccount = await db.query.accounts.findFirst({
       where: (accounts, { eq, and }) =>
         and(eq(accounts.userId, userId), eq(accounts.provider, "google")),
@@ -428,6 +515,9 @@ export async function deleteCalendarEvent(
       userAccount.access_token = refreshedToken;
     }
 
+    console.log(`Deleting calendar event: ${eventId}`);
+
+    // Delete calendar event from Google Calendar API
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
       {
@@ -435,22 +525,47 @@ export async function deleteCalendarEvent(
         headers: {
           Authorization: `Bearer ${userAccount.access_token}`,
         },
-      },
+      }
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
+      // For DELETE, a 404 might be acceptable (event already deleted)
+      if (response.status === 404) {
+        console.log("Event not found (may have been already deleted)");
+        return true;
+      }
+
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = { status: response.status, statusText: response.statusText };
+      }
+      
+      console.log("Calendar API error response:", errorData);
+
+      // Handle token expiration by trying to refresh the token
       if (response.status === 401 && userAccount.refresh_token) {
+        console.log("Received 401, attempting to refresh token...");
         const refreshedToken = await refreshAccessToken(userAccount);
         if (refreshedToken) {
+          console.log("Token refreshed successfully, retrying request");
+          // Update the access token for retry
+          userAccount.access_token = refreshedToken;
+
+          // Retry the request with the new token
           return deleteCalendarEvent(userId, eventId);
+        } else {
+          console.log("Token refresh failed");
         }
       }
+
       throw new Error(
-        `Failed to delete calendar event: ${JSON.stringify(errorData)}`,
+        `Failed to delete calendar event: ${JSON.stringify(errorData)}`
       );
     }
 
+    console.log("Successfully deleted calendar event:", eventId);
     return true;
   } catch (error) {
     console.error("Error deleting calendar event:", error);
