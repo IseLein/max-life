@@ -41,6 +41,20 @@ export async function getCalendarEventsForCurrentWeek(
       throw new Error("No Google account found or access token missing");
     }
 
+    // Check if token is expired and refresh if needed
+    if (
+      userAccount.expires_at &&
+      userAccount.expires_at < Math.floor(Date.now() / 1000)
+    ) {
+      console.log("Access token expired, attempting to refresh...");
+      const refreshedToken = await refreshAccessToken(userAccount);
+      if (!refreshedToken) {
+        throw new Error("Failed to refresh expired access token");
+      }
+      // Update the access token for the current request
+      userAccount.access_token = refreshedToken;
+    }
+
     // Calculate current week's start and end dates
     const now = new Date();
     const startOfWeek = new Date(now);
@@ -55,6 +69,11 @@ export async function getCalendarEventsForCurrentWeek(
     const timeMin = startOfWeek.toISOString();
     const timeMax = endOfWeek.toISOString();
 
+    console.log(`Fetching calendar events from ${timeMin} to ${timeMax}`);
+    console.log(
+      `Using access token: ${userAccount.access_token?.substring(0, 10)}...`,
+    );
+
     // Fetch calendar events from Google Calendar API
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true&orderBy=startTime`,
@@ -67,13 +86,21 @@ export async function getCalendarEventsForCurrentWeek(
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.log("Calendar API error response:", errorData);
 
       // Handle token expiration by trying to refresh the token
       if (response.status === 401 && userAccount.refresh_token) {
+        console.log("Received 401, attempting to refresh token...");
         const refreshedToken = await refreshAccessToken(userAccount);
         if (refreshedToken) {
-          // Retry with the new token
+          console.log("Token refreshed successfully, retrying request");
+          // Update the access token for retry
+          userAccount.access_token = refreshedToken;
+
+          // Create a new function call with the updated token
           return getCalendarEventsForCurrentWeek(userId);
+        } else {
+          console.log("Token refresh failed");
         }
       }
 
@@ -83,6 +110,9 @@ export async function getCalendarEventsForCurrentWeek(
     }
 
     const data = await response.json();
+    console.log(
+      `Successfully fetched ${data.items?.length || 0} calendar events`,
+    );
     return data.items as CalendarEvent[];
   } catch (error) {
     console.error("Error fetching calendar events:", error);
@@ -98,6 +128,15 @@ async function refreshAccessToken(
       console.error("No refresh token available");
       return null;
     }
+    console.log("Refreshing access token using refresh token");
+
+    // Ensure we have the required environment variables
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      console.error(
+        "Missing Google OAuth credentials in environment variables",
+      );
+      return null;
+    }
 
     const response = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
@@ -105,8 +144,8 @@ async function refreshAccessToken(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
         grant_type: "refresh_token",
         refresh_token: account.refresh_token,
       }),
@@ -115,8 +154,11 @@ async function refreshAccessToken(
     const data = await response.json();
 
     if (!response.ok) {
+      console.error("Token refresh failed:", data);
       throw new Error(`Failed to refresh token: ${JSON.stringify(data)}`);
     }
+
+    console.log("Token refresh successful, updating database");
 
     // Update the account in the database with the new access token
     await db
@@ -152,6 +194,20 @@ export async function createCalendarEvent(
 
     if (!userAccount || !userAccount.access_token) {
       throw new Error("No Google account found or access token missing");
+    }
+
+    // Check if token is expired and refresh if needed
+    if (
+      userAccount.expires_at &&
+      userAccount.expires_at < Math.floor(Date.now() / 1000)
+    ) {
+      console.log("Access token expired, attempting to refresh...");
+      const refreshedToken = await refreshAccessToken(userAccount);
+      if (!refreshedToken) {
+        throw new Error("Failed to refresh expired access token");
+      }
+      // Update the access token for the current request
+      userAccount.access_token = refreshedToken;
     }
 
     const response = await fetch(
@@ -202,6 +258,20 @@ export async function updateCalendarEvent(
       throw new Error("No Google account found or access token missing");
     }
 
+    // Check if token is expired and refresh if needed
+    if (
+      userAccount.expires_at &&
+      userAccount.expires_at < Math.floor(Date.now() / 1000)
+    ) {
+      console.log("Access token expired, attempting to refresh...");
+      const refreshedToken = await refreshAccessToken(userAccount);
+      if (!refreshedToken) {
+        throw new Error("Failed to refresh expired access token");
+      }
+      // Update the access token for the current request
+      userAccount.access_token = refreshedToken;
+    }
+
     const response = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
       {
@@ -247,6 +317,20 @@ export async function deleteCalendarEvent(
 
     if (!userAccount || !userAccount.access_token) {
       throw new Error("No Google account found or access token missing");
+    }
+
+    // Check if token is expired and refresh if needed
+    if (
+      userAccount.expires_at &&
+      userAccount.expires_at < Math.floor(Date.now() / 1000)
+    ) {
+      console.log("Access token expired, attempting to refresh...");
+      const refreshedToken = await refreshAccessToken(userAccount);
+      if (!refreshedToken) {
+        throw new Error("Failed to refresh expired access token");
+      }
+      // Update the access token for the current request
+      userAccount.access_token = refreshedToken;
     }
 
     const response = await fetch(
