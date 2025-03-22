@@ -279,6 +279,7 @@ export function CalendarView({ className }: CalendarViewProps) {
         mode={modalMode}
         onSave={handleSaveEvent}
         onDelete={handleDeleteEvent}
+        setModalMode={setModalMode}
       />
     </Card>
   )

@@ -50,6 +50,7 @@ interface EventModalProps {
   mode: "view" | "edit" | "create";
   onSave: (event: CalendarEvent) => Promise<void>;
   onDelete?: (eventId: string) => Promise<void>;
+  setModalMode: (mode: "view" | "edit" | "create") => void;
 }
 
 export function EventModal({
@@ -59,6 +60,7 @@ export function EventModal({
   mode,
   onSave,
   onDelete,
+  setModalMode,
 }: EventModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<CalendarEvent>(
@@ -231,6 +233,7 @@ export function EventModal({
     // Switch to edit mode
     if (mode === "view" && event) {
       setFormData(event);
+      setModalMode("edit");
     }
   };
 
