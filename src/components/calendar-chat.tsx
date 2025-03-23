@@ -49,7 +49,7 @@ export function CalendarChat() {
 
       // The response is now a simple text response with events information
       const aiResponse = data.response;
-      
+
       // Create a message for the AI response
       const aiMessage: Message = {
         id: Date.now().toString(),
@@ -59,29 +59,29 @@ export function CalendarChat() {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-      
+
       // If events were created, generate suggestions for any that failed
       if (data.events && data.events.length > 0) {
         // Create suggestions for events that were successfully added
-        const successEvents = data.events.filter(event => event.success);
+        const successEvents = data.events.filter((event) => event.success);
         if (successEvents.length > 0) {
           // You could add a visual indicator that events were added successfully
           console.log(`Successfully added ${successEvents.length} events`);
         }
       }
-      
+
       setIsLoading(false);
     },
     onError: (error) => {
       console.error("Error in calendar chat:", error);
-      
+
       // Extract meaningful error message
       let errorMessage = "Failed to communicate with the calendar assistant";
-      
+
       if (error instanceof Error) {
         errorMessage = error.message;
       }
-      
+
       toast({
         title: "Error",
         description: errorMessage,
@@ -120,16 +120,45 @@ export function CalendarChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleSendMessage = () => {
+  // Add a function to get the user's local time information
+  const getUserTimeInfo = () => {
+    const now = new Date();
+    
+    // Format the date in user's local timezone
+    const localDate = now.toLocaleDateString('en-CA'); // YYYY-MM-DD format
+    
+    // Format the time with timezone offset included
+    const localTimeWithOffset = now.toISOString();
+    
+    // Get timezone name
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    // Get formatted local time for display (e.g., "10:41 PM")
+    const localTimeFormatted = now.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: 'numeric',
+      hour12: true 
+    });
+    
+    return {
+      date: localDate,
+      time: localTimeWithOffset,
+      timezone: timezone,
+      localTime: localTimeFormatted
+    };
+  };
+
+  const handleSendMessage = async () => {
     if (!input.trim()) return;
 
-    // Add user message
+    // Create a new user message
     const userMessage: Message = {
       id: Date.now().toString(),
       content: input,
       sender: "user",
       timestamp: new Date(),
     };
+
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
@@ -146,9 +175,13 @@ export function CalendarChat() {
       }));
     }
 
+    // Get the user's local time information
+    const timeInfo = getUserTimeInfo();
+
     calendarChatMutation.mutate({
       message: input,
       history: history,
+      userTimeInfo: timeInfo, // Pass the user's time info to the server
     });
   };
 

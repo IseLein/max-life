@@ -78,15 +78,78 @@ export const geminiRouter = createTRPCRouter({
             }),
           )
           .optional(),
+        userTimeInfo: z
+          .object({
+            date: z.string(),
+            time: z.string(),
+            timezone: z.string(),
+            localTime: z.string().optional(),
+          })
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id;
-      const { message } = input;
+      const { message, userTimeInfo } = input;
+
+      // Use user's time info if available, otherwise use server time
+      const currentDate =
+        userTimeInfo?.date || new Date().toISOString().split("T")[0];
+      const currentTime = userTimeInfo?.time || new Date().toISOString();
+      const timezone =
+        userTimeInfo?.timezone ||
+        Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const localTime =
+        userTimeInfo?.localTime ||
+        new Date().toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "numeric",
+          hour12: true,
+        });
+
+      // Create a dynamic extraction prompt with the user's time information
+      const dynamicExtractionPrompt = `
+You are a calendar assistant. Extract all calendar events from the following message. 
+Today's date is: ${currentDate} (${localTime} in ${timezone}). 
+The timezone of the user is: ${timezone}.
+
+For each event, provide:
+1. summary (title)
+2. description (optional)
+3. startDateTime (in ISO format with the correct timezone offset)
+4. endDateTime (in ISO format with the correct timezone offset)
+
+IMPORTANT TIME INTERPRETATION RULES:
+- Today means ${currentDate}
+- Tonight means today evening (after 6:00 PM today)
+- Tomorrow means ${new Date(new Date(currentDate).getTime() + 86400000).toLocaleDateString("en-CA")}
+- This weekend means the upcoming Saturday and Sunday
+- Next week means starting on ${new Date(new Date(currentDate).getTime() + 7 * 86400000).toLocaleDateString("en-CA")}
+
+When time is mentioned without a specific date:
+- If only time is mentioned (e.g., "at 3pm"), assume it's for today
+- If "tonight" is mentioned, set the date to today
+- If "tomorrow" is mentioned, set the date to tomorrow
+- Always use 24-hour time format in the ISO string
+- Make sure to use the user's timezone (${timezone}) when creating the ISO datetime strings
+
+Format your response as a JSON array of events. Only include the JSON array in your response, nothing else.
+Example format:
+[
+  {
+    "summary": "Grocery Shopping",
+    "description": "Buy fruits, vegetables, and milk",
+    "startDateTime": "2025-03-23T18:00:00-04:00",
+    "endDateTime": "2025-03-23T19:00:00-04:00"
+  }
+]
+
+If no events are found, return an empty array: []
+`;
 
       try {
         // First, try to extract events from the message
-        const extractionPrompt = `${EVENT_EXTRACTION_PROMPT}\n\nMessage: ${message}`;
+        const extractionPrompt = `${dynamicExtractionPrompt}\n\nMessage: ${message}`;
         const extractionResult = await gemini.generateContent(extractionPrompt);
         const extractionText = extractionResult.response.text();
 
