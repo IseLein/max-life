@@ -47,57 +47,10 @@ export function CalendarChat() {
     onSuccess: async (data) => {
       await utils.invalidate();
 
-      let aiResponse = "";
-
-      // Handle different response formats from the calendar assistant
-      if (data.response) {
-        // Simple text response
-        aiResponse = data.response;
-      } else if (data.initial) {
-        // Function call response
-        aiResponse = data.initial;
-
-        // If there was a function call, show details about what happened
-        if (data.functionCall) {
-          const functionName = data.functionCall.name;
-
-          // Add a system message about the function call
-          const systemMessage: Message = {
-            id: Date.now().toString() + "-system",
-            content: `Processing ${functionName}...`,
-            sender: "model",
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, systemMessage]);
-
-          // If there's a follow-up message from the model after the function call
-          if (data.followUp) {
-            setTimeout(() => {
-              const followUpMessage: Message = {
-                id: Date.now().toString() + "-followup",
-                content: data.followUp,
-                sender: "model",
-                timestamp: new Date(),
-              };
-              setMessages((prev) => [...prev, followUpMessage]);
-            }, 500);
-
-            // Don't set the initial response as we're showing the follow-up
-            setIsLoading(false);
-            return;
-          }
-        }
-      } else if (data.error) {
-        // Handle error
-        toast({
-          title: "Error",
-          description: data.error,
-          variant: "destructive",
-        });
-        aiResponse =
-          "I'm sorry, I encountered an error while processing your request.";
-      }
-
+      // The response is now a simple text response with events information
+      const aiResponse = data.response;
+      
+      // Create a message for the AI response
       const aiMessage: Message = {
         id: Date.now().toString(),
         content: aiResponse,
@@ -106,13 +59,32 @@ export function CalendarChat() {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
+      
+      // If events were created, generate suggestions for any that failed
+      if (data.events && data.events.length > 0) {
+        // Create suggestions for events that were successfully added
+        const successEvents = data.events.filter(event => event.success);
+        if (successEvents.length > 0) {
+          // You could add a visual indicator that events were added successfully
+          console.log(`Successfully added ${successEvents.length} events`);
+        }
+      }
+      
       setIsLoading(false);
     },
     onError: (error) => {
       console.error("Error in calendar chat:", error);
+      
+      // Extract meaningful error message
+      let errorMessage = "Failed to communicate with the calendar assistant";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to communicate with the calendar assistant",
+        description: errorMessage,
         variant: "destructive",
       });
       setIsLoading(false);
@@ -164,10 +136,15 @@ export function CalendarChat() {
 
     // Use the calendar chat mutation instead of the general Gemini one
     // Convert messages to the format expected by the Gemini model
-    const history = messages.slice(1).map((msg) => ({
-      role: msg.sender,
-      parts: [{ text: msg.content }],
-    }));
+    let history = [];
+
+    // Only send history if there are previous exchanges
+    if (messages.length > 2) {
+      history = messages.slice(1).map((msg) => ({
+        role: msg.sender,
+        parts: [{ text: msg.content }],
+      }));
+    }
 
     calendarChatMutation.mutate({
       message: input,

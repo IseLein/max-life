@@ -31,12 +31,16 @@ export const calendarRouter = createTRPCRouter({
       z.object({
         startDate: z.date(),
         endDate: z.date(),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       try {
         const userId = ctx.session.user.id;
-        const events = await getCalendarEvents(userId, input.startDate, input.endDate);
+        const events = await getCalendarEvents(
+          userId,
+          input.startDate,
+          input.endDate,
+        );
         return events;
       } catch (error) {
         console.error("Error in getEventsForDateRange procedure:", error);
@@ -65,15 +69,15 @@ export const calendarRouter = createTRPCRouter({
           timeZone: z.string().optional(),
         }),
         isAllDay: z.boolean().optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       try {
         const userId = ctx.session.user.id;
-        
+
         // Remove isAllDay as it's not part of the Google Calendar API
         const { isAllDay, ...eventData } = input;
-        
+
         const event = await createCalendarEvent(userId, eventData);
         return event;
       } catch (error) {
@@ -108,13 +112,13 @@ export const calendarRouter = createTRPCRouter({
           })
           .optional(),
         isAllDay: z.boolean().optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       try {
         const userId = ctx.session.user.id;
         const { id, isAllDay, ...eventData } = input;
-        
+
         const event = await updateCalendarEvent(userId, id, eventData);
         return event;
       } catch (error) {
@@ -131,12 +135,13 @@ export const calendarRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       try {
         const userId = ctx.session.user.id;
-        await deleteCalendarEvent(userId, input.id);
+        const result = await deleteCalendarEvent(userId, input.id);
+        return { success: true };
       } catch (error) {
         console.error("Error in deleteEvent procedure:", error);
         throw new TRPCError({

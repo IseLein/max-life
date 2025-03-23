@@ -210,7 +210,7 @@ export function CalendarView({ className }: CalendarViewProps) {
 
   const handleDeleteEvent = async (eventId: string) => {
     try {
-      await deleteEventMutation.mutateAsync({ eventId });
+      await deleteEventMutation.mutateAsync({ id: eventId });
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error deleting event:", error);
@@ -237,7 +237,10 @@ export function CalendarView({ className }: CalendarViewProps) {
   };
 
   // Helper function to position an event in the time grid
-  const getEventPosition = (event: CalendarEvent, eventsForTimeSlot: CalendarEvent[]) => {
+  const getEventPosition = (
+    event: CalendarEvent,
+    eventsForTimeSlot: CalendarEvent[],
+  ) => {
     if (event.isAllDay || event.start.date) return null; // All-day events are handled separately
 
     if (!event.start.dateTime || !event.end.dateTime) return null;
@@ -261,11 +264,15 @@ export function CalendarView({ className }: CalendarViewProps) {
 
     // Handle overlapping events
     const totalOverlappingEvents = eventsForTimeSlot.length;
-    const eventIndex = eventsForTimeSlot.findIndex(e => e.id === event.id);
-    
+    const eventIndex = eventsForTimeSlot.findIndex((e) => e.id === event.id);
+
     // Calculate width and left position based on number of overlapping events
-    const width = totalOverlappingEvents > 1 ? `${100 / totalOverlappingEvents}%` : '95%';
-    const left = totalOverlappingEvents > 1 ? `${(eventIndex * 100) / totalOverlappingEvents}%` : '2.5%';
+    const width =
+      totalOverlappingEvents > 1 ? `${100 / totalOverlappingEvents}%` : "95%";
+    const left =
+      totalOverlappingEvents > 1
+        ? `${(eventIndex * 100) / totalOverlappingEvents}%`
+        : "2.5%";
 
     return {
       top: `${topPosition}%`,
@@ -421,56 +428,66 @@ export function CalendarView({ className }: CalendarViewProps) {
                     {/* Time-based events */}
                     {(() => {
                       // Get all time-based events for this day
-                      const timeEvents = getEventsForDay(day)
-                        .filter(
-                          (event) =>
-                            !event.isAllDay &&
-                            !event.start.date &&
-                            event.start.dateTime
-                        );
-                      
+                      const timeEvents = getEventsForDay(day).filter(
+                        (event) =>
+                          !event.isAllDay &&
+                          !event.start.date &&
+                          event.start.dateTime,
+                      );
+
                       // Group events that overlap in time
                       const eventGroups: CalendarEvent[][] = [];
-                      
-                      timeEvents.forEach(event => {
-                        if (!event.start.dateTime || !event.end.dateTime) return;
-                        
+
+                      timeEvents.forEach((event) => {
+                        if (!event.start.dateTime || !event.end.dateTime)
+                          return;
+
                         const eventStart = parseISO(event.start.dateTime);
                         const eventEnd = parseISO(event.end.dateTime);
-                        
+
                         // Find a group this event overlaps with
                         let foundGroup = false;
-                        
+
                         for (const group of eventGroups) {
                           // Check if this event overlaps with any event in the group
-                          const overlaps = group.some(groupEvent => {
-                            if (!groupEvent.start.dateTime || !groupEvent.end.dateTime) return false;
-                            
-                            const groupEventStart = parseISO(groupEvent.start.dateTime);
-                            const groupEventEnd = parseISO(groupEvent.end.dateTime);
-                            
+                          const overlaps = group.some((groupEvent) => {
+                            if (
+                              !groupEvent.start.dateTime ||
+                              !groupEvent.end.dateTime
+                            )
+                              return false;
+
+                            const groupEventStart = parseISO(
+                              groupEvent.start.dateTime,
+                            );
+                            const groupEventEnd = parseISO(
+                              groupEvent.end.dateTime,
+                            );
+
                             // Check for overlap
                             return (
-                              (eventStart < groupEventEnd && eventEnd > groupEventStart) ||
-                              (groupEventStart < eventEnd && groupEventEnd > eventStart)
+                              (eventStart < groupEventEnd &&
+                                eventEnd > groupEventStart) ||
+                              (groupEventStart < eventEnd &&
+                                groupEventEnd > eventStart)
                             );
                           });
-                          
+
                           if (overlaps) {
                             group.push(event);
                             foundGroup = true;
                             break;
                           }
                         }
-                        
+
                         // If no overlapping group found, create a new group
                         if (!foundGroup) {
                           eventGroups.push([event]);
                         }
                       });
-                      
+
                       // Render all events with their proper positioning
-                      return eventGroups.flatMap(group => 
+                      return eventGroups.flatMap((group) =>
                         group.map((event, idx) => {
                           const position = getEventPosition(event, group);
                           if (!position) return null;
@@ -494,7 +511,8 @@ export function CalendarView({ className }: CalendarViewProps) {
                               <div className="truncate text-xs">
                                 {event.summary}
                               </div>
-                              {parseFloat(position.height.replace('%', '')) > 5 &&
+                              {parseFloat(position.height.replace("%", "")) >
+                                5 &&
                                 event.start.dateTime && (
                                   <div className="truncate text-xs">
                                     {format(
@@ -505,10 +523,10 @@ export function CalendarView({ className }: CalendarViewProps) {
                                 )}
                             </div>
                           );
-                        })
+                        }),
                       );
                     })()}
-                    
+
                     {/* Current time indicator */}
                     {isToday &&
                       isSameDay(day, new Date()) &&

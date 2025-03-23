@@ -232,7 +232,8 @@ export const createCalendarAssistant = (userId, customHistory) => {
   ];
 
   // Use custom history if provided, otherwise use default
-  const history = customHistory || defaultHistory;
+  // Make sure history is not empty to avoid API errors
+  const history = customHistory && customHistory.length > 0 ? customHistory : defaultHistory;
 
   const chat = model.startChat({
     history: history,
@@ -240,68 +241,73 @@ export const createCalendarAssistant = (userId, customHistory) => {
 
   return {
     sendMessage: async (message) => {
-      const result = await chat.sendMessage(message);
-      const functionCalls = result.response.functionCalls();
+      try {
+        const result = await chat.sendMessage(message);
+        const functionCalls = result.response.functionCalls();
 
-      if (functionCalls && functionCalls.length > 0) {
-        const call = functionCalls[0];
+        if (functionCalls && functionCalls.length > 0) {
+          const call = functionCalls[0];
 
-        try {
-          // Call the actual function with the user ID
-          const apiResponse = await calendarFunctions[call.name](
-            call.args,
-            userId,
-          );
+          try {
+            // Call the actual function with the user ID
+            const apiResponse = await calendarFunctions[call.name](
+              call.args,
+              userId,
+            );
 
-          // Send the API response back to the model
-          const followUpResult = await chat.sendMessage([
-            {
-              functionResponse: {
-                name: call.name,
-                response: apiResponse,
+            // Send the API response back to the model
+            const followUpResult = await chat.sendMessage([
+              {
+                functionResponse: {
+                  name: call.name,
+                  response: { result: apiResponse },
+                },
               },
-            },
-          ]);
+            ]);
 
-          // Return both the original and follow-up responses
-          return {
-            initial: result.response.text(),
-            functionCall: {
-              name: call.name,
-              args: call.args,
-            },
-            apiResponse,
-            followUp: followUpResult.response.text(),
-          };
-        } catch (error) {
-          console.error(`Error executing function ${call.name}:`, error);
-
-          // Send error back to model
-          const errorResult = await chat.sendMessage([
-            {
-              functionResponse: {
+            // Return both the original and follow-up responses
+            return {
+              initial: result.response.text(),
+              functionCall: {
                 name: call.name,
-                response: { error: error.message },
+                args: call.args,
               },
-            },
-          ]);
+              apiResponse,
+              followUp: followUpResult.response.text(),
+            };
+          } catch (error) {
+            console.error(`Error executing function ${call.name}:`, error);
 
-          return {
-            initial: result.response.text(),
-            functionCall: {
-              name: call.name,
-              args: call.args,
-            },
-            error: error.message,
-            followUp: errorResult.response.text(),
-          };
+            // Send error back to model
+            const errorResult = await chat.sendMessage([
+              {
+                functionResponse: {
+                  name: call.name,
+                  response: { error: error.message },
+                },
+              },
+            ]);
+
+            return {
+              initial: result.response.text(),
+              functionCall: {
+                name: call.name,
+                args: call.args,
+              },
+              error: error.message,
+              followUp: errorResult.response.text(),
+            };
+          }
         }
-      }
 
-      // If no function call, just return the text response
-      return {
-        response: result.response.text(),
-      };
+        // If no function call, just return the text response
+        return {
+          response: result.response.text(),
+        };
+      } catch (error) {
+        console.error("Error in Gemini chat:", error);
+        throw error;
+      }
     },
   };
 };

@@ -292,7 +292,7 @@ export async function createCalendarEvent(
       date?: string;
       timeZone?: string;
     };
-  }
+  },
 ): Promise<any> {
   try {
     // Get the user's Google account from the database
@@ -331,7 +331,7 @@ export async function createCalendarEvent(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(eventData),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -355,7 +355,7 @@ export async function createCalendarEvent(
       }
 
       throw new Error(
-        `Failed to create calendar event: ${JSON.stringify(errorData)}`
+        `Failed to create calendar event: ${JSON.stringify(errorData)}`,
       );
     }
 
@@ -385,7 +385,7 @@ export async function updateCalendarEvent(
       date?: string;
       timeZone?: string;
     };
-  }
+  },
 ): Promise<any> {
   try {
     // Get the user's Google account from the database
@@ -421,18 +421,18 @@ export async function updateCalendarEvent(
         headers: {
           Authorization: `Bearer ${userAccount.access_token}`,
         },
-      }
+      },
     );
 
     if (!getResponse.ok) {
       const errorData = await getResponse.json();
       throw new Error(
-        `Failed to fetch event for update: ${JSON.stringify(errorData)}`
+        `Failed to fetch event for update: ${JSON.stringify(errorData)}`,
       );
     }
 
     const currentEvent = await getResponse.json();
-    
+
     // Merge the current event with the updates
     const updatedEvent = {
       ...currentEvent,
@@ -449,7 +449,7 @@ export async function updateCalendarEvent(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(updatedEvent),
-      }
+      },
     );
 
     if (!response.ok) {
@@ -473,7 +473,7 @@ export async function updateCalendarEvent(
       }
 
       throw new Error(
-        `Failed to update calendar event: ${JSON.stringify(errorData)}`
+        `Failed to update calendar event: ${JSON.stringify(errorData)}`,
       );
     }
 
@@ -488,8 +488,9 @@ export async function updateCalendarEvent(
 
 export async function deleteCalendarEvent(
   userId: string,
-  eventId: string
+  eventId: string,
 ): Promise<boolean> {
+  console.log("\n\n\nAAAAAAAAAAAAAAAAA\n\n\n", userId, eventId);
   try {
     // Get the user's Google account from the database
     const userAccount = await db.query.accounts.findFirst({
@@ -525,7 +526,7 @@ export async function deleteCalendarEvent(
         headers: {
           Authorization: `Bearer ${userAccount.access_token}`,
         },
-      }
+      },
     );
 
     if (!response.ok) {
@@ -539,9 +540,12 @@ export async function deleteCalendarEvent(
       try {
         errorData = await response.json();
       } catch (e) {
-        errorData = { status: response.status, statusText: response.statusText };
+        errorData = {
+          status: response.status,
+          statusText: response.statusText,
+        };
       }
-      
+
       console.log("Calendar API error response:", errorData);
 
       // Handle token expiration by trying to refresh the token
@@ -561,7 +565,7 @@ export async function deleteCalendarEvent(
       }
 
       throw new Error(
-        `Failed to delete calendar event: ${JSON.stringify(errorData)}`
+        `Failed to delete calendar event: ${JSON.stringify(errorData)}`,
       );
     }
 
