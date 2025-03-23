@@ -17,7 +17,7 @@ pnpm install
 pnpm db:push
 ```
 
-Create a `.env` file using the template in `.env.local`
+Create a `.env` file using the template in `.env.example`
 
 Run the development server
 ```
