@@ -2,7 +2,7 @@ import { SchemaType, type FunctionDeclaration } from "@google/generative-ai"
 
 export const getCalendarEvents: FunctionDeclaration = {
     name: "getCalendarEvents",
-    description: `Return all events on the calender between "startDate" and "endDate" inclusive`,
+    description: `Return all events on the calender between "startDate" (inclusive) and "endDate" (exclusive)`,
     parameters: {
         type: SchemaType.OBJECT,
         properties: {

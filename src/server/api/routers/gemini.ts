@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, type Part } from "@google/generative-ai";
 
 import { env } from "~/env";
 import { addEventToCalendar, getCalendarEvents, editEventInCalendar, deleteEventFromCalendar } from "~/utils/functionCalls";
@@ -14,12 +14,26 @@ export const geminiRouter = createTRPCRouter({
       prompt: z.string(),
       history: z.array(z.object({
         role: z.string(),
-        parts: z.array(z.object({ text: z.string() }))
+        parts: z.array(z.any())
       })),
       personality: z.string(),
+      functionResponse: z.object({
+        name: z.string(),
+        response: z.any()
+      }).optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      const { prompt, history, personality } = input;
+      const { prompt, history, personality, functionResponse } = input;
+
+      let message: string | Array<string | Part> = prompt;
+      if (functionResponse) {
+        message = [{
+          functionResponse: {
+            name: functionResponse.name,
+            response: functionResponse?.response || {}
+          }
+        }];
+      }
 
       const gemini = genai.getGenerativeModel({
         model: "gemini-2.0-flash",

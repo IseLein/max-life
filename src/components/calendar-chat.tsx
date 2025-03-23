@@ -9,7 +9,14 @@ import { Send } from "lucide-react"
 import { EventSuggestion } from "~/components/event-suggestion"
 import { api } from "~/trpc/react"
 import type { Message, Suggestion, AddSuggestion, EditSuggestion, DeleteSuggestion } from "~/lib/calendar-utils"
+import { parseGeminiResponse } from "~/lib/calendar-utils"
+import type { Part } from "@google/generative-ai"
 
+
+type History = {
+  role: string
+  parts: Array<string | Part>
+}[]
 
 export function CalendarChat() {
   const [input, setInput] = useState("")
@@ -22,6 +29,7 @@ export function CalendarChat() {
       timestamp: new Date(),
     },
   ])
+  const [history, setHistory] = useState<History>([])
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -31,21 +39,63 @@ export function CalendarChat() {
     onSuccess: async (data) => {
       await utils.invalidate()
       console.log(data)
-      const ai_responses = data.response.candidates
-      if (!ai_responses || !ai_responses[0]) return
-      const ai_response = ai_responses[0].content?.parts?.[0]?.text || ""
+      const parsedResponse = parseGeminiResponse(data)
+      if (!parsedResponse) return
+      const { message, suggestions, parts, getEventArgs } = parsedResponse
 
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: ai_response,
-        sender: "model",
-        timestamp: new Date(),
+      setHistory((prev) => [...prev, { role: "model", parts }])
+
+      if (message != "") {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: message,
+          sender: "model",
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, aiMessage])
       }
 
-      setMessages((prev) => [...prev, aiMessage])
+      if (getEventArgs) {
+        const { startDate, endDate } = getEventArgs
+        fetchCalendarEvents(startDate, endDate)
+      } else {
+        setSuggestions(suggestions)
+      }
       setIsLoading(false)
     },
   })
+
+  const fetchCalendarEvents = async (startDate: Date, endDate: Date) => {
+    try {
+      // Use the trpc client directly to fetch events
+      const events = await utils.calendar.getEventsForDateRange.fetch({ startDate, endDate })
+      const message: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `recieved ${events.length} events`,
+        sender: "info",
+        timestamp: new Date(),
+      }
+      const functionResponse = {
+        name: "getCalendarEvents",
+        response: {
+          name: "getCalendarEvents",
+          content: { events }
+        }
+      }
+      makeGeminiRequest.mutate({ prompt: "", history, personality: 'friendly', functionResponse })
+      console.log(history)
+      setHistory((prev) => [...prev, { role: "function", parts: [{ functionResponse }] }])
+      setMessages((prev) => {
+        if (prev[prev.length - 1]?.content !== message.content) {
+          return [...prev, message]
+        } else {
+          return prev
+        }
+      })
+    } catch (error) {
+      console.error("Error fetching events:", error)
+    }
+  }
 
   useEffect(() => {
     scrollToBottom()
@@ -67,14 +117,10 @@ export function CalendarChat() {
     }
     setMessages((prev) => [...prev, userMessage])
     setInput("")
-    setSuggestions(generateTestSuggestions(input))
     setIsLoading(true)
 
-    const history = messages.slice(1).map(msg => ({
-      role: msg.sender,
-      parts: [{ text: msg.content }]
-    }))
-    makeGeminiRequest.mutate({ prompt: input, history, personality: 'friendly' })
+    makeGeminiRequest.mutate({ prompt: input, history, personality: 'friendly'  })
+    setHistory((prev) => [...prev, { role: "user", parts: [{ text: input }] }])
   }
 
   const generateTestSuggestions = (userInput: string): Suggestion[] => {
