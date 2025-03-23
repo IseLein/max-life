@@ -8,7 +8,7 @@ import { ScrollArea } from "~/components/ui/scroll-area"
 import { Send } from "lucide-react"
 import { EventSuggestion } from "~/components/event-suggestion"
 import { api } from "~/trpc/react"
-import type { Message, Suggestion, AddSuggestion, EditSuggestion, DeleteSuggestion } from "~/lib/calendar-utils"
+import type { Message, Suggestion, AddSuggestion, EditSuggestion, DeleteSuggestion, SuggestionResponse } from "~/lib/calendar-utils"
 import { parseGeminiResponse } from "~/lib/calendar-utils"
 import type { Part } from "@google/generative-ai"
 
@@ -31,6 +31,7 @@ export function CalendarChat() {
   ])
   const [history, setHistory] = useState<History>([])
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [suggestionResponses, setSuggestionResponses] = useState<SuggestionResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -65,6 +66,58 @@ export function CalendarChat() {
     },
   })
 
+  // Add TRPC mutations for calendar operations
+  const createEventMutation = api.calendar.createEvent.useMutation({
+    onSuccess: (data) => {
+      console.log("Event created successfully:", data)
+    },
+    onError: (error) => {
+      console.error("Error creating event:", error)
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        content: `Failed to create event: ${error.message}`,
+        sender: "info",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    }
+  })
+
+  const updateEventMutation = api.calendar.updateEvent.useMutation({
+    onSuccess: (data) => {
+      console.log("Event updated successfully:", data)
+    },
+    onError: (error) => {
+      console.error("Error updating event:", error)
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        content: `Failed to update event: ${error.message}`,
+        sender: "info",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    }
+  })
+
+  const deleteEventMutation = api.calendar.deleteEvent.useMutation({
+    onSuccess: () => {
+      console.log("Event deleted successfully")
+    },
+    onError: (error) => {
+      console.error("Error deleting event:", error)
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        content: `Failed to delete event: ${error.message}`,
+        sender: "info",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    }
+  })
+
   const fetchCalendarEvents = async (startDate: Date, endDate: Date) => {
     try {
       // Use the trpc client directly to fetch events
@@ -82,7 +135,7 @@ export function CalendarChat() {
           content: { events }
         }
       }
-      makeGeminiRequest.mutate({ prompt: "", history, personality: 'friendly', functionResponse })
+      makeGeminiRequest.mutate({ prompt: "", history, personality: 'friendly', functionResponses: [functionResponse] })
       console.log(history)
       setHistory((prev) => [...prev, { role: "function", parts: [{ functionResponse }] }])
       setMessages((prev) => {
@@ -123,60 +176,6 @@ export function CalendarChat() {
     setHistory((prev) => [...prev, { role: "user", parts: [{ text: input }] }])
   }
 
-  const generateTestSuggestions = (userInput: string): Suggestion[] => {
-    const today = new Date()
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-
-    if (userInput.toLowerCase().includes("add")) {
-      return [
-        {
-          id: "s1",
-          action: "add",
-          title: "Study Session",
-          description: "Focused learning time for your new skill",
-          year: today.getFullYear(),
-          month: today.getMonth(),
-          day: today.getDate(),
-          startTime: 18,
-          endTime: 19,
-        } as AddSuggestion,
-      ]
-    } else if (userInput.toLowerCase().includes("edit")) {
-      return [
-        {
-          id: "s3",
-          action: "edit",
-          eventId: "event1",
-          changes: {
-            title: "Reading Time",
-            description: "Quiet time to enjoy your book",
-            year: today.getFullYear(),
-            month: today.getMonth(),
-            day: today.getDate(),
-            startTime: 20,
-            endTime: 21,
-          },
-        } as EditSuggestion,
-      ]
-    } else {
-      return [
-        {
-          id: "s4",
-          action: "delete",
-          eventId: "event1",
-          title: "Study Session",
-          description: "Focused learning time for your new skill",
-          year: today.getFullYear(),
-          month: today.getMonth(),
-          day: today.getDate(),
-          startTime: 18,
-          endTime: 19,
-        } as DeleteSuggestion,
-      ]
-    }
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -184,21 +183,234 @@ export function CalendarChat() {
     }
   }
 
-  const handleAddToCalendar = (suggestionId: string) => {
-    // In a real app, this would add the event to Google Calendar
-    setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId))
-
-    // Add confirmation message
-    const confirmationMessage: Message = {
-      id: Date.now().toString(),
-      content: "Event added to your calendar!",
-      sender: "model",
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, confirmationMessage])
+  const sendFunctionResponse = () => {
+    if (suggestionResponses.length == 0) return
+    // After successful modification, update model history with function response
+    console.log(suggestionResponses)
+    const functionResponses = suggestionResponses.map((s) => ({
+      name: s.name,
+      response: s
+    }))
+    
+    // Convert the functionResponses to the expected Part format
+    const functionResponseParts = functionResponses.map(resp => ({ 
+      functionResponse: resp 
+    } as Part))
+    
+    // Refresh the conversation with the AI to acknowledge the action
+    makeGeminiRequest.mutate({ 
+      prompt: "", 
+      history, 
+      personality: 'friendly', 
+      functionResponses 
+    })
+    
+    setSuggestionResponses([]);
+    setHistory((prev) => [...prev, { role: "function", parts: functionResponseParts }])
   }
 
+  // Add useEffect to detect when all suggestions have been handled
+  useEffect(() => {
+    // If we had suggestions before but now they're all handled, send the function response
+    if (suggestions.length === 0 && suggestionResponses.length > 0) {
+      sendFunctionResponse();
+    }
+  }, [suggestions, suggestionResponses]);
+
+  const handleAcceptSuggestion = async (suggestionId: string) => {
+    // Find the suggestion
+    const suggestion = suggestions.find((s) => s.id === suggestionId)
+    if (!suggestion) return
+    
+
+    // Define function names for Gemini
+    const names = {
+      "add": "addEventToCalendar",
+      "edit": "editEventInCalendar",
+      "delete": "deleteEventFromCalendar"
+    }
+
+    let success = false
+    let errorMessage = ""
+
+    try {
+      // Process the suggestion based on action type
+      if (suggestion.action === "add") {
+        const addSuggestion = suggestion as AddSuggestion
+        
+        // Format date and time for Google Calendar API
+        const startDate = new Date(
+          addSuggestion.year, 
+          addSuggestion.month, 
+          addSuggestion.day, 
+          Number(addSuggestion.startTime), 
+          0, 0
+        )
+        const endDate = new Date(
+          addSuggestion.year, 
+          addSuggestion.month, 
+          addSuggestion.day, 
+          Number(addSuggestion.endTime), 
+          0, 0
+        )
+        
+        // Create the event using TRPC
+        await createEventMutation.mutateAsync({
+          summary: addSuggestion.title,
+          description: addSuggestion.description || "",
+          start: {
+            dateTime: startDate.toISOString(),
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+          end: {
+            dateTime: endDate.toISOString(),
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
+        })
+        
+        success = true
+      } 
+      else if (suggestion.action === "edit") {
+        const editSuggestion = suggestion as EditSuggestion
+        
+        // Prepare update data
+        const updateData: any = {
+          id: editSuggestion.eventId,
+        }
+        
+        // Add fields that need to be updated
+        const { changes } = editSuggestion
+        if (changes.title) {
+          updateData.summary = changes.title
+        }
+        
+        // If date or time is changing, update start and end
+        if (changes.year || changes.month || changes.day || changes.startTime || changes.endTime) {
+          // Fetch the current event to get current values
+          const events = await utils.calendar.getEventsForDateRange.fetch({
+            startDate: new Date(new Date().getFullYear() - 1, 0, 1), // A year ago 
+            endDate: new Date(new Date().getFullYear() + 1, 11, 31), // A year from now
+          })
+          
+          const currentEvent = events.find(e => e.id === editSuggestion.eventId)
+          if (!currentEvent) {
+            throw new Error("Event not found")
+          }
+          
+          // Parse current dates
+          const currentStart = new Date(currentEvent.start.dateTime)
+          const currentEnd = new Date(currentEvent.end.dateTime)
+          
+          // Create new dates based on changes
+          const newYear = changes.year !== undefined ? changes.year : currentStart.getFullYear()
+          const newMonth = changes.month !== undefined ? changes.month : currentStart.getMonth()
+          const newDay = changes.day !== undefined ? changes.day : currentStart.getDate()
+          const newStartTime = changes.startTime !== undefined ? Number(changes.startTime) : currentStart.getHours()
+          const newEndTime = changes.endTime !== undefined ? Number(changes.endTime) : currentEnd.getHours()
+          
+          // Create new date objects
+          const newStartDate = new Date(newYear, newMonth, newDay, newStartTime, currentStart.getMinutes())
+          const newEndDate = new Date(newYear, newMonth, newDay, newEndTime, currentEnd.getMinutes())
+          
+          // Add to update data
+          updateData.start = {
+            dateTime: newStartDate.toISOString(),
+            timeZone: currentEvent.start.timeZone,
+          }
+          updateData.end = {
+            dateTime: newEndDate.toISOString(),
+            timeZone: currentEvent.end.timeZone,
+          }
+        }
+        
+        // Update the event
+        await updateEventMutation.mutateAsync(updateData)
+        success = true
+      } 
+      else if (suggestion.action === "delete") {
+        const deleteSuggestion = suggestion as DeleteSuggestion
+        
+        // Delete the event
+        await deleteEventMutation.mutateAsync({
+          id: deleteSuggestion.eventId
+        })
+        success = true
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        errorMessage = error.message
+      } else {
+        errorMessage = "An unknown error occurred"
+      }
+      console.error("Error processing calendar action:", error)
+      success = false
+    }
+
+    // Create the response for Gemini
+    const response = {
+      name: names[suggestion.action],
+      input: suggestion,
+      response: {
+        success,
+        errorMessage
+      }
+    }
+    setSuggestionResponses((prev) => [...prev, response])
+
+    // Add confirmation or error message
+    const messageContent = success 
+      ? suggestion.action === "add" 
+        ? "Event added to your calendar!" 
+        : suggestion.action === "edit"
+        ? "Event updated in your calendar!"
+        : "Event deleted from your calendar!"
+      : `Failed to ${suggestion.action} event: ${errorMessage}`
+      
+    const confirmationMessage: Message = {
+      id: Date.now().toString(),
+      content: messageContent,
+      sender: "info",
+      timestamp: new Date(),
+    }
+    setMessages((prev) => [...prev, confirmationMessage])
+
+    // Remove the suggestion from the UI
+    setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId))
+  }
+
+  const handleRejectSuggestion = (suggestionId: string) => {
+    const suggestion = suggestions.find((s) => s.id === suggestionId)
+    if (!suggestion) return
+
+    // Define function names for Gemini
+    const names = {
+      "add": "addEventToCalendar",
+      "edit": "editEventInCalendar",
+      "delete": "deleteEventFromCalendar"
+    }
+
+    const response = {
+      name: names[suggestion.action],
+      input: suggestion,
+      response: {
+        content: {
+          success: false,
+          error: 'rejected by user'
+        }
+      }
+    }
+    setSuggestionResponses((prev) => [...prev, response])
+
+    const confirmationMessage: Message = {
+      id: Date.now().toString(),
+      content: "Suggestion discarded.",
+      sender: "info",
+      timestamp: new Date(),
+    }
+    setMessages((prev) => [...prev, confirmationMessage])
+
+    setSuggestions((prev) => prev.filter((s) => s.id !== suggestionId))
+  }
 
   return (
     <Card className="h-[calc(100vh-12rem)]">
@@ -243,7 +455,8 @@ export function CalendarChat() {
                   <EventSuggestion
                     key={suggestion.id}
                     suggestion={suggestion}
-                    onAddToCalendar={() => handleAddToCalendar(suggestion.id)}
+                    onAccept={() => handleAcceptSuggestion(suggestion.id)}
+                    onReject={() => handleRejectSuggestion(suggestion.id)}
                   />
                 ))}
               </div>
@@ -258,8 +471,9 @@ export function CalendarChat() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          disabled={isLoading || (suggestions.length > 0)}
         />
-        <Button size="icon" onClick={handleSendMessage} disabled={isLoading}>
+        <Button size="icon" onClick={handleSendMessage} disabled={isLoading || (suggestions.length > 0)}>
           <Send className="h-4 w-4" />
         </Button>
       </div>

@@ -17,22 +17,22 @@ export const geminiRouter = createTRPCRouter({
         parts: z.array(z.any())
       })),
       personality: z.string(),
-      functionResponse: z.object({
+      functionResponses: z.array(z.object({
         name: z.string(),
         response: z.any()
-      }).optional()
+      })).optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      const { prompt, history, personality, functionResponse } = input;
+      const { prompt, history, personality, functionResponses } = input;
 
       let message: string | Array<string | Part> = prompt;
-      if (functionResponse) {
-        message = [{
+      if (functionResponses) {
+        message = functionResponses.map(functionResponse => ({
           functionResponse: {
             name: functionResponse.name,
             response: functionResponse?.response || {}
           }
-        }];
+        }));
       }
 
       const gemini = genai.getGenerativeModel({

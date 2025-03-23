@@ -19,7 +19,9 @@ export function parseGeminiResponse(response: GenerateContentResult): ParsedGemi
   let message = "";
   let getEventArgs;
   let suggestions: Suggestion[] = [];
+  let key = 0
   for (const part of parts) {
+    key++;
     if (part.text) {
       message = part.text
     } else if (part.functionCall) {
@@ -35,6 +37,34 @@ export function parseGeminiResponse(response: GenerateContentResult): ParsedGemi
             endDate: new Date(Number(endDateList[0]), Number(endDateList[1]) - 1, Number(endDateList[2]))
           }
         }
+      } else if (name === 'addEventToCalendar' && args) {
+        const argsObj = args as { title: string; description: string; year: number; month: number; day: number; startTime: number; endTime: number };
+        suggestions.push({
+          id: (Date.now() + 1).toString() + key.toString(),
+          action: "add",
+          title: argsObj.title,
+          year: argsObj.year,
+          month: argsObj.month,
+          day: argsObj.day,
+          startTime: argsObj.startTime,
+          endTime: argsObj.endTime,
+          description: argsObj.description
+        } as AddSuggestion)
+      } else if (name === 'editEventInCalendar' && args) {
+        const argsObj = args as { eventId: string; changes: { title?: string; year?: number; month?: number; day?: number; startTime?: number; endTime?: number } };
+        suggestions.push({
+          id: (Date.now() + 1).toString() + key.toString(),
+          action: "edit",
+          eventId: argsObj.eventId,
+          changes: argsObj.changes
+        } as EditSuggestion)
+      } else if (name === 'deleteEventFromCalendar' && args) {
+        const argsObj = args as { eventId: string };
+        suggestions.push({
+          id: (Date.now() + 1).toString() + key.toString(),
+          action: "delete",
+          eventId: argsObj.eventId
+        } as DeleteSuggestion)
       }
     }
   }
@@ -81,11 +111,17 @@ export interface EditSuggestion extends Suggestion {
 export interface DeleteSuggestion extends Suggestion {
   action: "delete"
   eventId: string
-  title: string
-  year: number
-  month: number
-  day: number
-  startTime: Number
-  endTime: Number
+  title?: string
+  year?: number
+  month?: number
+  day?: number
+  startTime?: Number
+  endTime?: Number
   description?: string
+}
+
+export interface SuggestionResponse {
+  name: string
+  input: any
+  response: any
 }

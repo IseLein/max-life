@@ -110,6 +110,34 @@ export const deleteEventFromCalendar: FunctionDeclaration = {
             eventId: {
                 type: SchemaType.STRING,
                 description: "Event ID"
+            },
+            title: {
+                type: SchemaType.STRING,
+                description: "Event title"
+            },
+            description: {
+                type: SchemaType.STRING,
+                description: "Event description"
+            },
+            year: {
+                type: SchemaType.INTEGER,
+                description: "Event year"
+            },
+            month: {
+                type: SchemaType.INTEGER,
+                description: "Event month (0-11)"
+            },
+            day: {
+                type: SchemaType.INTEGER,
+                description: "Event day (1-31)"
+            },
+            startTime: {
+                type: SchemaType.INTEGER,
+                description: "Event start time in hours (0-23)"
+            },
+            endTime: {
+                type: SchemaType.INTEGER,
+                description: "Event end time in hours (0-23)"
             }
         },
         required: ["eventId"]

@@ -7,18 +7,19 @@ import type { Suggestion, AddSuggestion, EditSuggestion, DeleteSuggestion } from
 
 interface EventSuggestionProps {
   suggestion: Suggestion
-  onAddToCalendar: () => void
+  onAccept: () => void
+  onReject: () => void
 }
 
-export function EventSuggestion({ suggestion, onAddToCalendar }: EventSuggestionProps) {
+export function EventSuggestion({ suggestion, onAccept, onReject }: EventSuggestionProps) {
   // Render the appropriate component based on the suggestion type
   switch (suggestion.action) {
     case "add":
-      return <AddEventSuggestion suggestion={suggestion as AddSuggestion} onAddToCalendar={onAddToCalendar} />
+      return <AddEventSuggestion suggestion={suggestion as AddSuggestion} onAccept={onAccept} onReject={onReject} />
     case "edit":
-      return <EditEventSuggestion suggestion={suggestion as EditSuggestion} onAddToCalendar={onAddToCalendar} />
+      return <EditEventSuggestion suggestion={suggestion as EditSuggestion} onAccept={onAccept} onReject={onReject} />
     case "delete":
-      return <DeleteEventSuggestion suggestion={suggestion as DeleteSuggestion} onAddToCalendar={onAddToCalendar} />
+      return <DeleteEventSuggestion suggestion={suggestion as DeleteSuggestion} onAccept={onAccept} onReject={onReject} />
     default:
       return null
   }
@@ -39,7 +40,7 @@ const formatTime = (time: Number) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
 }
 
-function AddEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: AddSuggestion, onAddToCalendar: () => void }) {
+function AddEventSuggestion({ suggestion, onAccept, onReject }: { suggestion: AddSuggestion, onAccept: () => void, onReject: () => void }) {
   return (
     <Card className="border border-green-200 shadow-sm">
       <CardContent className="p-3">
@@ -55,10 +56,10 @@ function AddEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: AddSu
         </div>
       </CardContent>
       <CardFooter className="p-2 flex justify-end space-x-2 bg-green-50">
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {}}>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onReject}>
           <X className="h-4 w-4" />
         </Button>
-        <Button variant="default" size="sm" className="h-8 w-8 p-0 bg-green-500 hover:bg-green-600" onClick={onAddToCalendar}>
+        <Button variant="default" size="sm" className="h-8 w-8 p-0 bg-green-500 hover:bg-green-600" onClick={onAccept}>
           <Check className="h-4 w-4" />
         </Button>
       </CardFooter>
@@ -66,7 +67,7 @@ function AddEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: AddSu
   )
 }
 
-function EditEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: EditSuggestion, onAddToCalendar: () => void }) {
+function EditEventSuggestion({ suggestion, onAccept, onReject }: { suggestion: EditSuggestion, onAccept: () => void, onReject: () => void }) {
   return (
     <Card className="border border-gray-200 shadow-sm">
       <CardContent className="p-3">
@@ -87,10 +88,10 @@ function EditEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: Edit
         )}
       </CardContent>
       <CardFooter className="p-2 flex justify-end space-x-2 bg-gray-50">
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {}}>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onReject}>
           <X className="h-4 w-4" />
         </Button>
-        <Button variant="default" size="sm" className="h-8 w-8 p-0 bg-gray-500 hover:bg-gray-600" onClick={onAddToCalendar}>
+        <Button variant="default" size="sm" className="h-8 w-8 p-0 bg-gray-500 hover:bg-gray-600" onClick={onAccept}>
           <Check className="h-4 w-4" />
         </Button>
       </CardFooter>
@@ -98,7 +99,7 @@ function EditEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: Edit
   )
 }
 
-function DeleteEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: DeleteSuggestion, onAddToCalendar: () => void }) {
+function DeleteEventSuggestion({ suggestion, onAccept, onReject }: { suggestion: DeleteSuggestion, onAccept: () => void, onReject: () => void }) {
   return (
     <Card className="border border-red-200 shadow-sm">
       <CardContent className="p-3">
@@ -109,16 +110,18 @@ function DeleteEventSuggestion({ suggestion, onAddToCalendar }: { suggestion: De
         {suggestion.description && (
           <div className="text-sm text-muted-foreground">{suggestion.description}</div>
         )}
-        <div className="text-sm mt-1">
-          {formatDate(suggestion.year, suggestion.month, suggestion.day)} • {formatTime(suggestion.startTime)} - {formatTime(suggestion.endTime)}
-        </div>
+        {suggestion.year && suggestion.month !== undefined && suggestion.day && suggestion.startTime !== undefined && suggestion.endTime !== undefined && (
+          <div className="text-sm mt-1">
+            {formatDate(suggestion.year, suggestion.month, suggestion.day)} • {formatTime(suggestion.startTime)} - {formatTime(suggestion.endTime)}
+          </div>
+        )}
         <div className="text-sm text-muted-foreground mt-1">Event ID: {suggestion.eventId}</div>
       </CardContent>
       <CardFooter className="p-2 flex justify-end space-x-2 bg-red-50">
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => {}}>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onReject}>
           <X className="h-4 w-4" />
         </Button>
-        <Button variant="default" size="sm" className="h-8 w-8 p-0 bg-red-500 hover:bg-red-600" onClick={onAddToCalendar}>
+        <Button variant="default" size="sm" className="h-8 w-8 p-0 bg-red-500 hover:bg-red-600" onClick={onAccept}>
           <Check className="h-4 w-4" />
         </Button>
       </CardFooter>
