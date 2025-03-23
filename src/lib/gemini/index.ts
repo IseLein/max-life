@@ -204,7 +204,7 @@ export const createCalendarAssistant = (userId, customHistory) => {
   const genAI = initializeGemini();
 
   const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-pro-latest",
+    model: "gemini-2.0-flash",
     tools: {
       functionDeclarations: calendarFunctionDeclarations,
     },
@@ -233,7 +233,8 @@ export const createCalendarAssistant = (userId, customHistory) => {
 
   // Use custom history if provided, otherwise use default
   // Make sure history is not empty to avoid API errors
-  const history = customHistory && customHistory.length > 0 ? customHistory : defaultHistory;
+  const history =
+    customHistory && customHistory.length > 0 ? customHistory : defaultHistory;
 
   const chat = model.startChat({
     history: history,

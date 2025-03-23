@@ -287,7 +287,9 @@ If no events are found, return an empty array: []
         }
 
         // Get a natural language response
-        const chatModel = genai.getGenerativeModel({ model: "gemini-1.5-pro" });
+        const chatModel = genai.getGenerativeModel({
+          model: "gemini-2.0-flash",
+        });
         const chat = chatModel.startChat({
           history: input.history || [],
         });
