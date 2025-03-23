@@ -11,6 +11,7 @@ import { api } from "~/trpc/react"
 import type { Message, Suggestion, AddSuggestion, EditSuggestion, DeleteSuggestion, SuggestionResponse } from "~/lib/calendar-utils"
 import { parseGeminiResponse } from "~/lib/calendar-utils"
 import type { Part } from "@google/generative-ai"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select"
 
 
 type History = {
@@ -18,8 +19,11 @@ type History = {
   parts: Array<string | Part>
 }[]
 
+type Personality = "strict" | "lenient" | "friendly" | "motivating"
+
 export function CalendarChat() {
   const [input, setInput] = useState("")
+  const [personality, setPersonality] = useState<Personality>("friendly")
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -135,7 +139,7 @@ export function CalendarChat() {
           content: { events }
         }
       }
-      makeGeminiRequest.mutate({ prompt: "", history, personality: 'friendly', functionResponses: [functionResponse] })
+      makeGeminiRequest.mutate({ prompt: "", history, personality, functionResponses: [functionResponse] })
       console.log(history)
       setHistory((prev) => [...prev, { role: "function", parts: [{ functionResponse }] }])
       setMessages((prev) => {
@@ -172,7 +176,7 @@ export function CalendarChat() {
     setInput("")
     setIsLoading(true)
 
-    makeGeminiRequest.mutate({ prompt: input, history, personality: 'friendly'  })
+    makeGeminiRequest.mutate({ prompt: input, history, personality })
     setHistory((prev) => [...prev, { role: "user", parts: [{ text: input }] }])
   }
 
@@ -201,7 +205,7 @@ export function CalendarChat() {
     makeGeminiRequest.mutate({ 
       prompt: "", 
       history, 
-      personality: 'friendly', 
+      personality, 
       functionResponses 
     })
     
@@ -414,8 +418,19 @@ export function CalendarChat() {
 
   return (
     <Card className="h-[calc(100vh-12rem)]">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle>Chat with your Calendar</CardTitle>
+        <Select value={personality} onValueChange={(value) => setPersonality(value as Personality)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select personality" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="strict">Strict</SelectItem>
+            <SelectItem value="lenient">Lenient</SelectItem>
+            <SelectItem value="friendly">Friendly</SelectItem>
+            <SelectItem value="motivating">Motivating</SelectItem>
+          </SelectContent>
+        </Select>
       </CardHeader>
       <CardContent className="p-0">
         <ScrollArea className="h-[calc(100vh-16rem)] px-4">
@@ -451,6 +466,22 @@ export function CalendarChat() {
             {suggestions.length > 0 && (
               <div className="space-y-2 my-4">
                 <div className="text-sm font-medium">Suggested Events:</div>
+                <div className="flex justify-between space-x-2">
+                  <Button variant="ghost" onClick={() => {
+                    suggestions.forEach((suggestion) => {
+                      handleAcceptSuggestion(suggestion.id)
+                    })
+                  }}>
+                    accept all
+                  </Button>
+                  <Button variant="ghost" onClick={() => {
+                    suggestions.forEach((suggestion) => {
+                      handleRejectSuggestion(suggestion.id)
+                    })
+                  }}>
+                    reject all
+                  </Button>
+                </div>
                 {suggestions.map((suggestion) => (
                   <EventSuggestion
                     key={suggestion.id}
