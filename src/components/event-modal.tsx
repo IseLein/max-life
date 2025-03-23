@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -23,6 +23,9 @@ import { cn } from "~/lib/utils";
 import { format } from "date-fns";
 import { CalendarIcon, Clock, Trash2 } from "lucide-react";
 import { Switch } from "~/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import { parseISO, isSameDay, areIntervalsOverlapping } from "date-fns";
 
 export interface CalendarEvent {
   id?: string;
@@ -51,6 +54,7 @@ interface EventModalProps {
   onSave: (event: CalendarEvent) => Promise<void>;
   onDelete?: (eventId: string) => Promise<void>;
   setModalMode: (mode: "view" | "edit" | "create") => void;
+  allEvents?: CalendarEvent[];
 }
 
 export function EventModal({
@@ -61,6 +65,7 @@ export function EventModal({
   onSave,
   onDelete,
   setModalMode,
+  allEvents = [],
 }: EventModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<CalendarEvent>(
@@ -77,9 +82,54 @@ export function EventModal({
     },
   );
 
+  const [overlappingEvents, setOverlappingEvents] = useState<CalendarEvent[]>([]);
+
   const isViewMode = mode === "view";
   const isEditMode = mode === "edit";
   const isCreateMode = mode === "create";
+
+  useEffect(() => {
+    if (isViewMode || !formData.start || !formData.end) return;
+
+    if (formData.isAllDay || formData.start.date) {
+      setOverlappingEvents([]);
+      return;
+    }
+
+    const eventStart = formData.start.dateTime
+      ? new Date(formData.start.dateTime)
+      : null;
+    const eventEnd = formData.end.dateTime ? new Date(formData.end.dateTime) : null;
+
+    if (!eventStart || !eventEnd) {
+      setOverlappingEvents([]);
+      return;
+    }
+
+    const overlaps = allEvents.filter((existingEvent) => {
+      if (existingEvent.id === event?.id) return false;
+
+      if (existingEvent.isAllDay || existingEvent.start.date) return false;
+
+      const existingStart = existingEvent.start.dateTime
+        ? new Date(existingEvent.start.dateTime)
+        : null;
+      const existingEnd = existingEvent.end.dateTime
+        ? new Date(existingEvent.end.dateTime)
+        : null;
+
+      if (!existingStart || !existingEnd) return false;
+
+      if (!isSameDay(eventStart, existingStart)) return false;
+
+      return areIntervalsOverlapping(
+        { start: eventStart, end: eventEnd },
+        { start: existingStart, end: existingEnd }
+      );
+    });
+
+    setOverlappingEvents(overlaps);
+  }, [formData, allEvents, event?.id, isViewMode]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -164,7 +214,6 @@ export function EventModal({
 
   const handleAllDayChange = (checked: boolean) => {
     if (checked) {
-      // Convert to all-day event
       const startDate = formData.start.dateTime
         ? new Date(formData.start.dateTime).toISOString().split("T")[0]
         : new Date().toISOString().split("T")[0];
@@ -180,7 +229,6 @@ export function EventModal({
         end: { date: endDate },
       }));
     } else {
-      // Convert to time-based event
       const startDateTime = formData.start.date
         ? `${formData.start.date}T09:00:00.000Z`
         : new Date().toISOString();
@@ -230,7 +278,6 @@ export function EventModal({
   };
 
   const handleEdit = () => {
-    // Switch to edit mode
     if (mode === "view" && event) {
       setFormData(event);
       setModalMode("edit");
@@ -355,6 +402,24 @@ export function EventModal({
                   required
                 />
               </div>
+
+              {overlappingEvents.length > 0 && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Scheduling Conflict</AlertTitle>
+                  <AlertDescription>
+                    This event overlaps with {overlappingEvents.length} existing event{overlappingEvents.length > 1 ? 's' : ''}:
+                    <ul className="mt-2 list-disc pl-5">
+                      {overlappingEvents.slice(0, 3).map((e) => (
+                        <li key={e.id} className="text-sm">
+                          {e.summary} ({e.start.dateTime ? format(new Date(e.start.dateTime), "h:mm a") : "All day"})
+                        </li>
+                      ))}
+                      {overlappingEvents.length > 3 && <li className="text-sm">...and {overlappingEvents.length - 3} more</li>}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <div className="flex items-center gap-2">
                 <Label htmlFor="isAllDay">All day</Label>
