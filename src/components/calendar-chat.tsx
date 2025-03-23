@@ -12,7 +12,7 @@ import { api } from "~/trpc/react"
 type Message = {
   id: string
   content: string
-  sender: "user" | "ai"
+  sender: "user" | "model"
   timestamp: Date
 }
 
@@ -31,7 +31,7 @@ export function CalendarChat() {
       id: "1",
       content:
         "Hi there! I'm your AI calendar assistant. Tell me about your goals, hobbies, or what you'd like to plan.",
-      sender: "ai",
+      sender: "model",
       timestamp: new Date(),
     },
   ])
@@ -51,7 +51,7 @@ export function CalendarChat() {
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: ai_response,
-        sender: "ai",
+        sender: "model",
         timestamp: new Date(),
       }
 
@@ -82,19 +82,11 @@ export function CalendarChat() {
     setInput("")
     setIsLoading(true)
 
-    makeGeminiRequest.mutate({ prompt: input })
-  }
-
-  const getAIResponse = (userInput: string): string => {
-    if (userInput.toLowerCase().includes("goal")) {
-      return "Great! I've analyzed your goals and created some suggested calendar events to help you achieve them. Would you like me to add these to your calendar?"
-    } else if (userInput.toLowerCase().includes("hobby")) {
-      return "I've created some suggested time blocks for your hobbies that fit well with your existing schedule. Check them out below!"
-    } else if (userInput.toLowerCase().includes("work")) {
-      return "I've analyzed your work responsibilities and created some focused work blocks. Would you like to see them?"
-    } else {
-      return "I understand. Based on what you've shared, I've created some suggested calendar events. Would you like to add them to your calendar?"
-    }
+    const history = messages.slice(1).map(msg => ({
+      role: msg.sender,
+      parts: [{ text: msg.content }]
+    }))
+    makeGeminiRequest.mutate({ prompt: input, history })
   }
 
   const generateSuggestions = (userInput: string): Suggestion[] => {
@@ -157,7 +149,7 @@ export function CalendarChat() {
     const confirmationMessage: Message = {
       id: Date.now().toString(),
       content: "Event added to your calendar!",
-      sender: "ai",
+      sender: "model",
       timestamp: new Date(),
     }
 
