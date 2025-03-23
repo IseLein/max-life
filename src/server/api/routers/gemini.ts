@@ -8,43 +8,6 @@ import { calendarFunctions } from "~/lib/gemini";
 const genai = new GoogleGenerativeAI(env.GOOGLE_AI_API_KEY);
 const gemini = genai.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-// Simple event extraction prompt
-const EVENT_EXTRACTION_PROMPT = `
-You are a calendar assistant. Extract all calendar events from the following message. Today's date is: ${new Date().toISOString().split("T")[0]}. The timezone of the user is: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.
-
-For each event, provide:
-1. summary (title)
-2. description (optional)
-3. startDateTime (in ISO format)
-4. endDateTime (in ISO format)
-
-IMPORTANT TIME INTERPRETATION RULES:
-- Today means ${new Date().toISOString().split("T")[0]}
-- Tonight means today evening
-- Tomorrow means ${new Date(Date.now() + 86400000).toISOString().split("T")[0]}
-- This weekend means the upcoming Saturday and Sunday
-- Next week means starting on ${new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]}
-
-When time is mentioned without a specific date:
-- If only time is mentioned (e.g., "at 3pm"), assume it's for today
-- If "tonight" is mentioned, set the date to today
-- If "tomorrow" is mentioned, set the date to tomorrow
-- Always use 24-hour time format in the ISO string
-
-Format your response as a JSON array of events. Only include the JSON array in your response, nothing else.
-Example format:
-[
-  {
-    "summary": "Grocery Shopping",
-    "description": "Buy fruits, vegetables, and milk",
-    "startDateTime": "2025-03-23T18:00:00",
-    "endDateTime": "2025-03-23T19:00:00"
-  }
-]
-
-If no events are found, return an empty array: []
-`;
-
 export const geminiRouter = createTRPCRouter({
   generate: protectedProcedure
     .input(
@@ -154,7 +117,113 @@ If no events are found, return an empty array: []
 `;
 
       try {
-        // First, try to extract events from the message
+        // Check if this is a deletion request
+        const isDeletionRequest =
+          /delete|remove|cancel/i.test(message.toLowerCase()) &&
+          /event|appointment|meeting|calendar/i.test(message.toLowerCase());
+
+        let deletedEvents = [];
+
+        // Handle deletion requests
+        if (isDeletionRequest) {
+          // First, determine the date range for deletion
+          const isNextWeek = /next week/i.test(message);
+          const isToday = /today/i.test(message);
+          const isTomorrow = /tomorrow/i.test(message);
+          const isAll = /all|every/i.test(message);
+
+          let startDate = new Date(currentDate);
+          let endDate = new Date(currentDate);
+
+          if (isNextWeek) {
+            startDate = new Date(nextWeekDate.toLocaleDateString("en-CA"));
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6); // End of next week
+          } else if (isTomorrow) {
+            startDate = new Date(tomorrowDate.toLocaleDateString("en-CA"));
+            endDate = new Date(startDate);
+          } else if (isToday) {
+            // startDate is already today
+            // endDate is already today
+          } else if (isAll) {
+            // For "all events", use a broader range
+            endDate.setMonth(endDate.getMonth() + 3); // 3 months from now
+          } else {
+            // Default to next 7 days if not specified
+            endDate.setDate(endDate.getDate() + 7);
+          }
+
+          // Get events in the specified date range
+          const events = await calendarFunctions.getCalendarEvents(
+            { startDate, endDate },
+            userId,
+          );
+
+          // Delete each event
+          for (const event of events) {
+            try {
+              await calendarFunctions.deleteCalendarEvent(
+                { userId: userId, eventId: event.id },
+                userId,
+              );
+              deletedEvents.push({
+                summary: event.summary,
+                success: true,
+                id: event.id,
+              });
+            } catch (deleteError) {
+              console.error("Error deleting event:", deleteError);
+              deletedEvents.push({
+                summary: event.summary,
+                success: false,
+                error: (deleteError as Error).message,
+              });
+            }
+          }
+
+          // Generate response about deletion
+          let deletionResponse = "";
+          if (deletedEvents.length > 0) {
+            const successfulDeletions = deletedEvents.filter((e) => e.success);
+            const failedDeletions = deletedEvents.filter((e) => !e.success);
+
+            deletionResponse = `I've deleted ${successfulDeletions.length} events from your calendar`;
+
+            if (isNextWeek) {
+              deletionResponse += ` for next week (${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()})`;
+            } else if (isTomorrow) {
+              deletionResponse += ` for tomorrow (${startDate.toLocaleDateString()})`;
+            } else if (isToday) {
+              deletionResponse += ` for today (${startDate.toLocaleDateString()})`;
+            } else {
+              deletionResponse += ` from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`;
+            }
+
+            if (successfulDeletions.length > 0) {
+              deletionResponse += ":\n";
+              successfulDeletions.forEach((event) => {
+                deletionResponse += `- ${event.summary}\n`;
+              });
+            }
+
+            if (failedDeletions.length > 0) {
+              deletionResponse += `\n\nI couldn't delete ${failedDeletions.length} events:\n`;
+              failedDeletions.forEach((event) => {
+                deletionResponse += `- ${event.summary}\n`;
+              });
+            }
+          } else {
+            deletionResponse =
+              "I didn't find any events to delete in the specified time period.";
+          }
+
+          return {
+            response: deletionResponse,
+            events: deletedEvents,
+          };
+        }
+
+        // If not a deletion request, continue with event extraction
         const extractionPrompt = `${dynamicExtractionPrompt}\n\nMessage: ${message}`;
         const extractionResult = await gemini.generateContent(extractionPrompt);
         const extractionText = extractionResult.response.text();
@@ -223,6 +292,18 @@ If no events are found, return an empty array: []
           history: input.history || [],
         });
 
+        // Add system instructions to inform the model about available functions
+        const systemInstructions = `You are a calendar assistant with direct access to the user's calendar. 
+You can create, view, update, and delete calendar events through API calls that have already been implemented.
+When users ask to view or list events, you should respond as if you have actually listed them (which you have).
+When users ask to delete events, you should respond as if you have actually deleted them (which you have).
+When users ask to create events, you should respond as if you have actually created them (which you have).
+When users ask to update events, you should respond as if you have actually updated them (which you have).
+DO NOT say things like "I don't have access to your calendar" because you DO have access through API calls.`;
+
+        // Add the system instructions to the chat
+        await chat.sendMessage(systemInstructions);
+
         const chatResponse = await chat.sendMessage(responsePrompt);
 
         return {
@@ -260,7 +341,7 @@ If no events are found, return an empty array: []
         // Call the function with the arguments and user ID
         const result = await calendarFunctions[functionName](
           args as any,
-          userId
+          userId,
         );
         return { success: true, data: result };
       } catch (error) {
