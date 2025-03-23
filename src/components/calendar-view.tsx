@@ -73,7 +73,6 @@ export function CalendarView({ className }: CalendarViewProps) {
   } = api.calendar.getEventsForDateRange.useQuery(
     { startDate, endDate },
     {
-      keepPreviousData: true,
       refetchOnWindowFocus: false,
     },
   );
@@ -200,7 +199,8 @@ export function CalendarView({ className }: CalendarViewProps) {
       if (modalMode === "create") {
         await createEventMutation.mutateAsync(event);
       } else if (modalMode === "edit") {
-        await updateEventMutation.mutateAsync(event);
+        if (!event.id) throw new Error("Event ID is required");
+        await updateEventMutation.mutateAsync({ id: event.id, ...event });
       }
       setIsModalOpen(false);
     } catch (error) {
@@ -210,7 +210,7 @@ export function CalendarView({ className }: CalendarViewProps) {
 
   const handleDeleteEvent = async (eventId: string) => {
     try {
-      await deleteEventMutation.mutateAsync({ eventId });
+      await deleteEventMutation.mutateAsync({ id: eventId });
       setIsModalOpen(false);
     } catch (error) {
       console.error("Error deleting event:", error);
