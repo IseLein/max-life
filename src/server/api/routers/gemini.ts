@@ -11,11 +11,25 @@ const gemini = genai.getGenerativeModel({ model: "gemini-1.5-pro" });
 // Simple event extraction prompt
 const EVENT_EXTRACTION_PROMPT = `
 You are a calendar assistant. Extract all calendar events from the following message. Today's date is: ${new Date().toISOString().split("T")[0]}. The timezone of the user is: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.
+
 For each event, provide:
 1. summary (title)
 2. description (optional)
 3. startDateTime (in ISO format)
 4. endDateTime (in ISO format)
+
+IMPORTANT TIME INTERPRETATION RULES:
+- Today means ${new Date().toISOString().split("T")[0]}
+- Tonight means today evening
+- Tomorrow means ${new Date(Date.now() + 86400000).toISOString().split("T")[0]}
+- This weekend means the upcoming Saturday and Sunday
+- Next week means starting on ${new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]}
+
+When time is mentioned without a specific date:
+- If only time is mentioned (e.g., "at 3pm"), assume it's for today
+- If "tonight" is mentioned, set the date to today
+- If "tomorrow" is mentioned, set the date to tomorrow
+- Always use 24-hour time format in the ISO string
 
 Format your response as a JSON array of events. Only include the JSON array in your response, nothing else.
 Example format:
@@ -72,7 +86,7 @@ export const geminiRouter = createTRPCRouter({
 
       try {
         // First, try to extract events from the message
-        const extractionPrompt = `${EVENT_EXTRACTION_PROMPT}\n\nMessage: ${message}\nToday's date: ${new Date().toISOString().split("T")[0]}`;
+        const extractionPrompt = `${EVENT_EXTRACTION_PROMPT}\n\nMessage: ${message}`;
         const extractionResult = await gemini.generateContent(extractionPrompt);
         const extractionText = extractionResult.response.text();
 
