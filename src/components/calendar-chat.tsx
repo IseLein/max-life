@@ -8,21 +8,8 @@ import { ScrollArea } from "~/components/ui/scroll-area"
 import { Send } from "lucide-react"
 import { EventSuggestion } from "~/components/event-suggestion"
 import { api } from "~/trpc/react"
+import type { Message, Suggestion, AddSuggestion, EditSuggestion, DeleteSuggestion } from "~/lib/calendar-utils"
 
-type Message = {
-  id: string
-  content: string
-  sender: "user" | "model"
-  timestamp: Date
-}
-
-type Suggestion = {
-  id: string
-  title: string
-  description: string
-  date: Date
-  duration: number
-}
 
 export function CalendarChat() {
   const [input, setInput] = useState("")
@@ -80,6 +67,7 @@ export function CalendarChat() {
     }
     setMessages((prev) => [...prev, userMessage])
     setInput("")
+    setSuggestions(generateTestSuggestions(input))
     setIsLoading(true)
 
     const history = messages.slice(1).map(msg => ({
@@ -89,47 +77,56 @@ export function CalendarChat() {
     makeGeminiRequest.mutate({ prompt: input, history })
   }
 
-  const generateSuggestions = (userInput: string): Suggestion[] => {
+  const generateTestSuggestions = (userInput: string): Suggestion[] => {
     const today = new Date()
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
 
-    if (userInput.toLowerCase().includes("goal") && userInput.toLowerCase().includes("learn")) {
+    if (userInput.toLowerCase().includes("add")) {
       return [
         {
           id: "s1",
+          action: "add",
           title: "Study Session",
           description: "Focused learning time for your new skill",
-          date: new Date(today.setHours(18, 0, 0, 0)),
-          duration: 60,
-        },
-        {
-          id: "s2",
-          title: "Practice Session",
-          description: "Practice what you've learned",
-          date: new Date(tomorrow.setHours(17, 0, 0, 0)),
-          duration: 45,
-        },
+          year: today.getFullYear(),
+          month: today.getMonth(),
+          day: today.getDate(),
+          startTime: 18,
+          endTime: 19,
+        } as AddSuggestion,
       ]
-    } else if (userInput.toLowerCase().includes("hobby") && userInput.toLowerCase().includes("read")) {
+    } else if (userInput.toLowerCase().includes("edit")) {
       return [
         {
           id: "s3",
-          title: "Reading Time",
-          description: "Quiet time to enjoy your book",
-          date: new Date(today.setHours(20, 0, 0, 0)),
-          duration: 30,
-        },
+          action: "edit",
+          eventId: "event1",
+          changes: {
+            title: "Reading Time",
+            description: "Quiet time to enjoy your book",
+            year: today.getFullYear(),
+            month: today.getMonth(),
+            day: today.getDate(),
+            startTime: 20,
+            endTime: 21,
+          },
+        } as EditSuggestion,
       ]
     } else {
       return [
         {
           id: "s4",
-          title: "Planning Session",
-          description: "Review and plan your goals",
-          date: new Date(today.setHours(9, 0, 0, 0)),
-          duration: 30,
-        },
+          action: "delete",
+          eventId: "event1",
+          title: "Study Session",
+          description: "Focused learning time for your new skill",
+          year: today.getFullYear(),
+          month: today.getMonth(),
+          day: today.getDate(),
+          startTime: 18,
+          endTime: 19,
+        } as DeleteSuggestion,
       ]
     }
   }
