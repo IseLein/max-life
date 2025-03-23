@@ -27,18 +27,26 @@ type Suggestion = {
 
 export function CalendarChat() {
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      content: `Hi there! I'm your AI calendar assistant. I can help you manage your calendar events. You can ask me to view, create, update, or delete events. Today's date is: ${new Date().toISOString()}`,
-      sender: "model",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  
+  // Use a counter for stable IDs
+  const [messageIdCounter, setMessageIdCounter] = useState(1);
+  
+  // Initialize the welcome message on the client side only to prevent hydration errors
+  useEffect(() => {
+    setMessages([
+      {
+        id: "welcome-message",
+        content: `Hi there! I'm your AI calendar assistant. I can help you manage your calendar events. You can ask me to view, create, update, or delete events. Today's date is: ${new Date().toISOString()}`,
+        sender: "model",
+        timestamp: new Date(),
+      },
+    ]);
+  }, []);
 
   const utils = api.useUtils();
 
@@ -50,14 +58,15 @@ export function CalendarChat() {
       // The response is now a simple text response with events information
       const aiResponse = data.response;
 
-      // Create a message for the AI response
+      // Create a message for the AI response with stable ID
       const aiMessage: Message = {
-        id: Date.now().toString(),
+        id: `ai-${messageIdCounter}`,
         content: aiResponse,
         sender: "model",
         timestamp: new Date(),
       };
 
+      setMessageIdCounter(prev => prev + 1);
       setMessages((prev) => [...prev, aiMessage]);
 
       // If events were created, generate suggestions for any that failed
@@ -91,6 +100,50 @@ export function CalendarChat() {
     },
   });
 
+  // Add calendar function call mutation
+  const calendarFunctionCall = api.gemini.calendarFunctionCall.useMutation({
+    onSuccess: (result) => {
+      if (result.success) {
+        // Get suggestion from the current state
+        const suggestion = suggestions.find(s => s.id === result.data?.suggestionId);
+        
+        if (suggestion) {
+          // Remove the suggestion
+          setSuggestions((prev) =>
+            prev.filter((s) => s.id !== suggestion.id),
+          );
+
+          // Add confirmation message with stable ID
+          const confirmationMessage: Message = {
+            id: `confirm-${messageIdCounter}`,
+            content: `Event "${suggestion.title}" has been added to your calendar.`,
+            sender: "model",
+            timestamp: new Date(),
+          };
+
+          setMessageIdCounter(prev => prev + 1);
+          setMessages((prev) => [...prev, confirmationMessage]);
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to add event to calendar",
+          variant: "destructive",
+        });
+      }
+      setIsLoading(false);
+    },
+    onError: (error) => {
+      console.error("Error adding event to calendar:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add event to calendar",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+    },
+  });
+
   // Legacy Gemini request for backward compatibility
   const makeGeminiRequest = api.gemini.generate.useMutation({
     onSuccess: async (data) => {
@@ -101,12 +154,13 @@ export function CalendarChat() {
       const ai_response = ai_responses[0].content?.parts?.[0]?.text || "";
 
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `legacy-${messageIdCounter}`,
         content: ai_response,
         sender: "model",
         timestamp: new Date(),
       };
 
+      setMessageIdCounter(prev => prev + 1);
       setMessages((prev) => [...prev, aiMessage]);
       setIsLoading(false);
     },
@@ -151,21 +205,22 @@ export function CalendarChat() {
   const handleSendMessage = async () => {
     if (!input.trim()) return;
 
-    // Create a new user message
+    // Create a new user message with stable ID
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `user-${messageIdCounter}`,
       content: input,
       sender: "user",
       timestamp: new Date(),
     };
 
+    setMessageIdCounter(prev => prev + 1);
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
     // Use the calendar chat mutation instead of the general Gemini one
     // Convert messages to the format expected by the Gemini model
-    let history = [];
+    let history: { role: string; parts: { text: string }[] }[] = [];
 
     // Only send history if there are previous exchanges
     if (messages.length > 2) {
@@ -203,53 +258,16 @@ export function CalendarChat() {
     ).toISOString();
 
     // Call the direct function endpoint
-    api.gemini.calendarFunctionCall.mutate(
-      {
-        functionName: "createCalendarEvent",
-        args: {
-          summary: suggestion.title,
-          description: suggestion.description,
-          startDateTime,
-          endDateTime,
-        },
+    calendarFunctionCall.mutate({
+      functionName: "createCalendarEvent",
+      args: {
+        summary: suggestion.title,
+        description: suggestion.description,
+        startDateTime,
+        endDateTime,
+        suggestionId: suggestion.id, // Pass the suggestion ID to identify it in the success handler
       },
-      {
-        onSuccess: (result) => {
-          if (result.success) {
-            // Remove the suggestion
-            setSuggestions((prev) =>
-              prev.filter((s) => s.id !== suggestion.id),
-            );
-
-            // Add confirmation message
-            const confirmationMessage: Message = {
-              id: Date.now().toString(),
-              content: `Event "${suggestion.title}" has been added to your calendar.`,
-              sender: "model",
-              timestamp: new Date(),
-            };
-
-            setMessages((prev) => [...prev, confirmationMessage]);
-          } else {
-            toast({
-              title: "Error",
-              description: result.error || "Failed to add event to calendar",
-              variant: "destructive",
-            });
-          }
-          setIsLoading(false);
-        },
-        onError: (error) => {
-          console.error("Error adding event to calendar:", error);
-          toast({
-            title: "Error",
-            description: "Failed to add event to calendar",
-            variant: "destructive",
-          });
-          setIsLoading(false);
-        },
-      },
-    );
+    });
   };
 
   const generateSuggestions = (userInput: string): Suggestion[] => {

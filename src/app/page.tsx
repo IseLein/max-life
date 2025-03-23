@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { LoginButton } from "~/components/login-button";
 
-import { LatestPost } from "~/app/_components/post";
-import { WeeklyCalendar } from "~/app/_components/calendar";
 import { auth } from "~/server/auth";
 
 export default async function Home() {

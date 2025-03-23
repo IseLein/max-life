@@ -6,7 +6,7 @@ import { env } from "~/env";
 import { calendarFunctions } from "~/lib/gemini";
 
 const genai = new GoogleGenerativeAI(env.GOOGLE_AI_API_KEY);
-const gemini = genai.getGenerativeModel({ model: "gemini-1.5-pro" });
+const gemini = genai.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // Simple event extraction prompt
 const EVENT_EXTRACTION_PROMPT = `
@@ -107,6 +107,12 @@ export const geminiRouter = createTRPCRouter({
           hour12: true,
         });
 
+      // Calculate tomorrow and next week dates
+      const tomorrowDate = new Date();
+      tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+      const nextWeekDate = new Date();
+      nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+
       // Create a dynamic extraction prompt with the user's time information
       const dynamicExtractionPrompt = `
 You are a calendar assistant. Extract all calendar events from the following message. 
@@ -122,9 +128,9 @@ For each event, provide:
 IMPORTANT TIME INTERPRETATION RULES:
 - Today means ${currentDate}
 - Tonight means today evening (after 6:00 PM today)
-- Tomorrow means ${new Date(new Date(currentDate).getTime() + 86400000).toLocaleDateString("en-CA")}
+- Tomorrow means ${tomorrowDate.toLocaleDateString("en-CA")}
 - This weekend means the upcoming Saturday and Sunday
-- Next week means starting on ${new Date(new Date(currentDate).getTime() + 7 * 86400000).toLocaleDateString("en-CA")}
+- Next week means starting on ${nextWeekDate.toLocaleDateString("en-CA")}
 
 When time is mentioned without a specific date:
 - If only time is mentioned (e.g., "at 3pm"), assume it's for today
@@ -186,7 +192,7 @@ If no events are found, return an empty array: []
               createdEvents.push({
                 summary: event.summary,
                 success: false,
-                error: createError.message,
+                error: (createError as Error).message,
               });
             }
           }
@@ -252,7 +258,10 @@ If no events are found, return an empty array: []
 
       try {
         // Call the function with the arguments and user ID
-        const result = await calendarFunctions[functionName](args, userId);
+        const result = await calendarFunctions[functionName](
+          args as any,
+          userId
+        );
         return { success: true, data: result };
       } catch (error) {
         console.error(`Error executing ${functionName}:`, error);

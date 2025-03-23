@@ -23,7 +23,8 @@ import {
 } from "~/components/ui/card";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { api } from "~/trpc/react";
-import { EventModal, CalendarEvent } from "~/components/event-modal";
+import { EventModal } from "~/components/event-modal";
+import type { CalendarEvent } from "~/components/event-modal";
 import { useToast } from "~/components/ui/use-toast";
 
 // Helper functions for calendar operations
@@ -73,7 +74,6 @@ export function CalendarView({ className }: CalendarViewProps) {
   } = api.calendar.getEventsForDateRange.useQuery(
     { startDate, endDate },
     {
-      keepPreviousData: true,
       refetchOnWindowFocus: false,
     },
   );
@@ -200,7 +200,11 @@ export function CalendarView({ className }: CalendarViewProps) {
       if (modalMode === "create") {
         await createEventMutation.mutateAsync(event);
       } else if (modalMode === "edit") {
-        await updateEventMutation.mutateAsync(event);
+        if (event.id) {
+          await updateEventMutation.mutateAsync({ id: event.id, ...event });
+        } else {
+          throw new Error("Event ID is required for editing");
+        }
       }
       setIsModalOpen(false);
     } catch (error) {
