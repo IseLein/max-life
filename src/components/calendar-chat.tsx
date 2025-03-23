@@ -490,6 +490,22 @@ export function CalendarChat() {
                     onReject={() => handleRejectSuggestion(suggestion.id)}
                   />
                 ))}
+                <div className="flex justify-between space-x-2">
+                  <Button variant="ghost" onClick={() => {
+                    suggestions.forEach((suggestion) => {
+                      handleAcceptSuggestion(suggestion.id)
+                    })
+                  }}>
+                    accept all
+                  </Button>
+                  <Button variant="ghost" onClick={() => {
+                    suggestions.forEach((suggestion) => {
+                      handleRejectSuggestion(suggestion.id)
+                    })
+                  }}>
+                    reject all
+                  </Button>
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />
