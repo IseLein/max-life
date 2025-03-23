@@ -74,7 +74,7 @@ export function CalendarChat() {
       role: msg.sender,
       parts: [{ text: msg.content }]
     }))
-    makeGeminiRequest.mutate({ prompt: input, history })
+    makeGeminiRequest.mutate({ prompt: input, history, personality: 'friendly' })
   }
 
   const generateTestSuggestions = (userInput: string): Suggestion[] => {
