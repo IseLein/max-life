@@ -32,8 +32,8 @@ pnpm dev
 - [Tailwind CSS](https://tailwindcss.com)
 - [tRPC](https://trpc.io)
 - [Google Generative AI](https://cloud.google.com/ai/generative-ai)
-- [Sqlite]
+- [Sqlite](https://www.sqlite.org/)
 
 ## Learn More
 
-To learn more about Max LAIF, checkout devpost
+To learn more about Max LAIF, checkout [devpost](https://devpost.com/software/max-laif)
